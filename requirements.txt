@@ -1,0 +1,11 @@
+streamlit
+pandas
+gspread
+google-auth
+plotly
+Pillow
+streamlit-cropper
+selenium
+beautifulsoup4
+cryptography
+
