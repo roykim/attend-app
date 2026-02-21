@@ -3,6 +3,7 @@
 
 import base64
 import io
+import time
 
 import pandas as pd
 import streamlit as st
@@ -19,8 +20,28 @@ from sheets import (
 )
 
 
+def _clear_class_edit_state():
+    """수정/취소 후 반정보 탭 세션 정리. 남은 위젯 키가 rerun 시 꼬이는 것 방지."""
+    keys_to_del = [k for k in list(st.session_state.keys()) if k.startswith("class_edit")]
+    for k in keys_to_del:
+        del st.session_state[k]
+
+
 def render(tab):
-    students_data = get_students_data()
+    for attempt in range(2):
+        try:
+            students_data = get_students_data()
+            break
+        except Exception:
+            if attempt == 1:
+                with tab:
+                    st.warning("학생 데이터를 불러올 수 없습니다. 잠시 후 다시 시도해 보세요.")
+                    if st.button("다시 로드", key="class_reload_data"):
+                        get_students_data.clear()
+                        st.rerun()
+                st.stop()
+            time.sleep(0.3)
+
     students_ws = get_students_ws()
     ensure_students_photo_column(students_ws)
     ensure_students_extra_columns(students_ws)
@@ -28,7 +49,11 @@ def render(tab):
         class_headers = list(students_data.columns)
         class_all_records = students_data.to_dict("records")
     except Exception:
-        st.warning("학생 데이터를 불러올 수 없습니다.")
+        with tab:
+            st.warning("학생 데이터를 불러올 수 없습니다.")
+            if st.button("다시 로드", key="class_reload_data2"):
+                get_students_data.clear()
+                st.rerun()
         st.stop()
 
     if not class_headers:
@@ -220,9 +245,7 @@ def render(tab):
                             col_letter = col_letter or "A"
                             range_str = f"A{edit_row_c}:{col_letter}{edit_row_c}"
                             students_ws.update(range_str, [row_vals_c])
-                            for key in ("class_edit_sheet_row", "class_edit_data"):
-                                if key in st.session_state:
-                                    del st.session_state[key]
+                            _clear_class_edit_state()
                             get_students_data.clear()
                             st.success("수정되었습니다.")
                             st.rerun()
@@ -230,9 +253,7 @@ def render(tab):
                             st.error(f"수정 실패: {e}")
             with col_cancel_c:
                 if st.button("취소", key="class_edit_cancel"):
-                    for key in ("class_edit_sheet_row", "class_edit_data"):
-                        if key in st.session_state:
-                            del st.session_state[key]
+                    _clear_class_edit_state()
                     st.rerun()
             st.divider()
 

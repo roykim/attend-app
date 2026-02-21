@@ -54,27 +54,33 @@ def render(tab):
         weekly_total = df_att.groupby("주일_기준").size().reset_index(name="출석인원")
         weekly_total["주일"] = weekly_total["주일_기준"].apply(lambda p: p.end_time.strftime("%m/%d"))
         weekly_total = weekly_total.sort_values("주일_기준")
-        max1 = weekly_total["출석인원"].max() if not weekly_total.empty else 0
-        fig1 = px.line(weekly_total, x="주일", y="출석인원", markers=True)
-        fig1.update_traces(hovertemplate="주일: %{x}<br>출석인원: %{y:.0f}명<extra></extra>")
-        fig1.update_layout(
-            xaxis_tickangle=-45, margin=dict(b=80), xaxis_title="", yaxis_title="출석인원",
-            yaxis=dict(dtick=_y_dtick(max1), tickformat=".0f"),
-        )
-        st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
+        if weekly_total.empty:
+            st.caption("표시할 주일별 데이터가 없습니다.")
+        else:
+            max1 = weekly_total["출석인원"].max()
+            fig1 = px.line(weekly_total, x="주일", y="출석인원", markers=True)
+            fig1.update_traces(hovertemplate="주일: %{x}<br>출석인원: %{y:.0f}명<extra></extra>")
+            fig1.update_layout(
+                xaxis_tickangle=-45, margin=dict(b=80), xaxis_title="", yaxis_title="출석인원",
+                yaxis=dict(dtick=_y_dtick(max1), tickformat=".0f"),
+            )
+            st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
 
         st.subheader("2. 학년별 출석 (주일)")
         weekly_by_grade = df_att.groupby(["주일_기준", "학년"]).size().reset_index(name="출석인원")
         weekly_by_grade["주일"] = weekly_by_grade["주일_기준"].apply(lambda p: p.end_time.strftime("%m/%d"))
         weekly_by_grade = weekly_by_grade.sort_values(["주일_기준", "학년"])
-        max2 = weekly_by_grade["출석인원"].max() if not weekly_by_grade.empty else 0
-        fig2 = px.line(weekly_by_grade, x="주일", y="출석인원", color="학년", markers=True)
-        fig2.update_traces(hovertemplate="주일: %{x}<br>학년: %{fullData.name}<br>출석인원: %{y:.0f}명<extra></extra>")
-        fig2.update_layout(
-            xaxis_tickangle=-45, margin=dict(b=80), xaxis_title="", yaxis_title="출석인원", legend_title="학년",
-            yaxis=dict(dtick=_y_dtick(max2), tickformat=".0f"),
-        )
-        st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+        if weekly_by_grade.empty:
+            st.caption("표시할 학년별 데이터가 없습니다.")
+        else:
+            max2 = weekly_by_grade["출석인원"].max()
+            fig2 = px.line(weekly_by_grade, x="주일", y="출석인원", color="학년", markers=True)
+            fig2.update_traces(hovertemplate="주일: %{x}<br>학년: %{fullData.name}<br>출석인원: %{y:.0f}명<extra></extra>")
+            fig2.update_layout(
+                xaxis_tickangle=-45, margin=dict(b=80), xaxis_title="", yaxis_title="출석인원", legend_title="학년",
+                yaxis=dict(dtick=_y_dtick(max2), tickformat=".0f"),
+            )
+            st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
 
         st.subheader("3. 학년별 반별 출석 (주일)")
         grades_list = sorted(df_att["학년"].dropna().unique().tolist(), key=str)
@@ -117,13 +123,16 @@ def render(tab):
                     weekly_nb = df_nb.groupby("주일_기준").size().reset_index(name="새신자 등록")
                     weekly_nb["주일"] = weekly_nb["주일_기준"].apply(lambda p: p.end_time.strftime("%m/%d"))
                     weekly_nb = weekly_nb.sort_values("주일_기준")
-                    max_nb = weekly_nb["새신자 등록"].max() if not weekly_nb.empty else 0
-                    fig_nb = px.line(weekly_nb, x="주일", y="새신자 등록", markers=True)
-                    fig_nb.update_traces(hovertemplate="주일: %{x}<br>새신자 등록: %{y:.0f}명<extra></extra>")
-                    fig_nb.update_layout(
-                        xaxis_tickangle=-45, margin=dict(b=80), xaxis_title="", yaxis_title="새신자 등록(명)",
-                        yaxis=dict(dtick=_y_dtick(max_nb), tickformat=".0f"),
-                    )
-                    st.plotly_chart(fig_nb, use_container_width=True, config={"displayModeBar": False})
+                    if weekly_nb.empty:
+                        st.caption("표시할 주일별 새신자 데이터가 없습니다.")
+                    else:
+                        max_nb = weekly_nb["새신자 등록"].max()
+                        fig_nb = px.line(weekly_nb, x="주일", y="새신자 등록", markers=True)
+                        fig_nb.update_traces(hovertemplate="주일: %{x}<br>새신자 등록: %{y:.0f}명<extra></extra>")
+                        fig_nb.update_layout(
+                            xaxis_tickangle=-45, margin=dict(b=80), xaxis_title="", yaxis_title="새신자 등록(명)",
+                            yaxis=dict(dtick=_y_dtick(max_nb), tickformat=".0f"),
+                        )
+                        st.plotly_chart(fig_nb, use_container_width=True, config={"displayModeBar": False})
         except Exception:
             st.caption("새신자 데이터를 불러올 수 없습니다.")
