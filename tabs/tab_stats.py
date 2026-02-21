@@ -7,7 +7,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from sheets import get_attendance_ws, get_new_believers_ws
+from sheets import get_attendance_data, get_new_believers_data
 
 
 def _y_dtick(max_val: float) -> int:
@@ -27,7 +27,7 @@ def render(tab):
     with tab:
         st.title("📊 출석 통계 (주일)")
         try:
-            attendance_raw = pd.DataFrame(get_attendance_ws().get_all_records())
+            attendance_raw = get_attendance_data()
         except Exception:
             st.warning("출석 데이터를 불러올 수 없습니다. 출석 입력을 먼저 진행해 주세요.")
             st.stop()
@@ -100,7 +100,7 @@ def render(tab):
         # 4. 날짜별(주일) 새신자 등록자 수 (맨 아랫쪽)
         st.subheader("4. 주일별 새신자 등록자 수")
         try:
-            nb_records = get_new_believers_ws().get_all_records()
+            nb_records = get_new_believers_data()
             if not nb_records or "등록일" not in (nb_records[0] if nb_records else {}):
                 st.caption("새신자 등록 데이터가 없습니다.")
             else:

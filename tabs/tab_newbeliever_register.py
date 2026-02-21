@@ -17,6 +17,7 @@ from sheets import (
     get_new_believers_ws,
     get_students_data,
     get_students_ws,
+    invalidate_sheets_cache,
 )
 
 
@@ -102,7 +103,7 @@ def render(tab):
                     if selected_new_grade is not None and selected_new_class is not None:
                         students_ws = get_students_ws()
                         ensure_students_photo_column(students_ws)
-                        existing = pd.DataFrame(students_ws.get_all_records())
+                        existing = get_students_data()  # 캐시된 학생 목록
                         already = (
                             existing["학년"].astype(str).eq(str(selected_new_grade))
                             & existing["반"].astype(str).eq(str(selected_new_class))
@@ -118,9 +119,7 @@ def render(tab):
                                     break
                             student_row = [str(row_map.get(h, "")) for h in headers]
                             students_ws.append_row(student_row)
-                            get_students_data.clear()
-                        else:
-                            get_students_data.clear()
+                        invalidate_sheets_cache()
                     st.success("새신자가 등록되었습니다." + (" 해당 반에 추가되어 출석 관리됩니다." if selected_new_grade and selected_new_class else ""))
                     for key in ("new_reg_date", "new_name", "new_phone", "new_birth", "new_address", "new_friend", "new_grade", "new_class", "new_photo_source", "new_photo_file", "new_photo_camera"):
                         if key in st.session_state:

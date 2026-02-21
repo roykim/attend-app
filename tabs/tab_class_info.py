@@ -25,8 +25,8 @@ def render(tab):
     ensure_students_photo_column(students_ws)
     ensure_students_extra_columns(students_ws)
     try:
-        class_headers = students_ws.row_values(1)
-        class_all_records = students_ws.get_all_records()
+        class_headers = list(students_data.columns)
+        class_all_records = students_data.to_dict("records")
     except Exception:
         st.warning("학생 데이터를 불러올 수 없습니다.")
         st.stop()
@@ -44,7 +44,7 @@ def render(tab):
         selected_class_only = st.selectbox("반", classes_list, key="class_info_class")
 
         df_all = pd.DataFrame(class_all_records)
-        df_all["_sheet_row"] = list(range(2, 2 + len(class_all_records)))
+        df_all["_sheet_row"] = list(range(2, 2 + len(class_all_records)))  # 시트 행 번호 (헤더=1)
         df_class = df_all[
             (df_all["학년"].astype(str) == str(selected_grade_class))
             & (df_all["반"].astype(str) == str(selected_class_only))

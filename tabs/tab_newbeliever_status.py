@@ -12,9 +12,11 @@ from config import PHOTO_WIDTH
 from photo_utils import image_to_base64_for_sheet
 from sheets import (
     ensure_students_photo_column,
+    get_new_believers_data,
     get_new_believers_ws,
     get_students_data,
     get_students_ws,
+    invalidate_sheets_cache,
 )
 
 
@@ -33,7 +35,7 @@ def render(tab):
     students_data = get_students_data()
     try:
         nb_ws = get_new_believers_ws()
-        nb_records = nb_ws.get_all_records()
+        nb_records = get_new_believers_data()
     except Exception:
         st.warning("새신자 데이터를 불러올 수 없습니다.")
         st.stop()
@@ -80,7 +82,7 @@ def render(tab):
                         if add_selected_grade and add_selected_class:
                             students_ws = get_students_ws()
                             ensure_students_photo_column(students_ws)
-                            existing = pd.DataFrame(students_ws.get_all_records())
+                            existing = get_students_data()
                             already = (
                                 existing["학년"].astype(str).eq(str(add_selected_grade))
                                 & existing["반"].astype(str).eq(str(add_selected_class))
@@ -95,9 +97,7 @@ def render(tab):
                                         break
                                 student_row = [str(row_map.get(h, "")) for h in headers]
                                 students_ws.append_row(student_row)
-                                get_students_data.clear()
-                            else:
-                                get_students_data.clear()
+                        invalidate_sheets_cache()
                         st.success("새신자가 등록되었습니다.")
                         st.rerun()
                     except Exception as e:
@@ -147,6 +147,7 @@ def render(tab):
                                 photo_b64,
                             ]
                             nb_ws.update(f"A{edit_row}:I{edit_row}", [row_vals])
+                            invalidate_sheets_cache()
                             for key in ("nb_edit_sheet_row", "nb_edit_data"):
                                 if key in st.session_state:
                                     del st.session_state[key]

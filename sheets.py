@@ -37,6 +37,23 @@ def get_students_data():
     return pd.DataFrame(sheet.worksheet("students").get_all_records())
 
 
+@st.cache_data(ttl=90)
+def get_attendance_data():
+    """출석 시트 데이터 캐시 (90초). 버튼/입력 시 반복 API 호출 방지."""
+    return pd.DataFrame(get_attendance_ws().get_all_records())
+
+
+@st.cache_data(ttl=90)
+def get_new_believers_data():
+    """새신자 시트 데이터 캐시 (90초)."""
+    return get_new_believers_ws().get_all_records()
+
+
+def invalidate_sheets_cache():
+    """시트에 쓰기 후 캐시 무효화. 저장/수정 직후 호출."""
+    st.cache_data.clear()
+
+
 def get_attendance_ws():
     """출석 시트 반환 (세션 캐시)."""
     if "attendance_ws" not in st.session_state:

@@ -7,7 +7,7 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from sheets import get_attendance_ws, get_students_data
+from sheets import get_attendance_data, get_students_data
 
 
 def render(tab):
@@ -36,7 +36,7 @@ def render(tab):
             st.info("해당 반에 등록된 학생이 없습니다.")
         else:
             try:
-                att_all = pd.DataFrame(get_attendance_ws().get_all_records())
+                att_all = get_attendance_data()
             except Exception:
                 att_all = pd.DataFrame()
 
