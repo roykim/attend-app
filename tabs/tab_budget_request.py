@@ -13,7 +13,8 @@ from streamlit_cropper import st_cropper
 try:
     from weasyprint import HTML as WeasyHTML
     WEASYPRINT_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
+    WeasyHTML = None
     WEASYPRINT_AVAILABLE = False
 
 import auth
