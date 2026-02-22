@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 import streamlit as st
 from cryptography.fernet import Fernet
 
-from config import SESSION_DAYS
+from config import SESSION_DAYS, BUDGET_SPREADSHEET_NAME
 
 
 def init(client, spreadsheet_name: str):
@@ -30,9 +30,20 @@ def _get_fernet():
 
 
 def _get_config_worksheet():
-    """같은 스프레드시트 안의 'config' 시트 반환. 없으면 생성."""
+    """출석용 스프레드시트 안의 'config' 시트 반환. 없으면 생성."""
     import gspread
     sheet = _client.open(_spreadsheet_name)
+    try:
+        return sheet.worksheet("config")
+    except gspread.exceptions.WorksheetNotFound:
+        sheet.add_worksheet(title="config", rows=2, cols=2)
+        return sheet.worksheet("config")
+
+
+def _get_budget_config_worksheet():
+    """예산청구 전용 스프레드시트 안의 'config' 시트 반환. 없으면 생성. (결재 비밀번호 저장용)"""
+    import gspread
+    sheet = _client.open(BUDGET_SPREADSHEET_NAME)
     try:
         return sheet.worksheet("config")
     except gspread.exceptions.WorksheetNotFound:
@@ -56,6 +67,32 @@ def set_stored_password(plain_password: str):
     """비밀번호를 암호화해 config 시트 A1에 저장."""
     enc = _get_fernet().encrypt(plain_password.encode()).decode()
     _get_config_worksheet().update_acell("A1", enc)
+
+
+def get_approval_password():
+    """결재(승인)용 비밀번호를 예산청구 전용 스프레드시트 config 시트 B1에서 읽어 복호화. 없으면 None."""
+    try:
+        ws = _get_budget_config_worksheet()
+        enc = ws.acell("B1").value
+        if not enc or not enc.strip():
+            return None
+        return _get_fernet().decrypt(enc.strip().encode()).decode()
+    except Exception:
+        return None
+
+
+def set_approval_password(plain_password: str):
+    """결재 비밀번호를 암호화해 예산청구 전용 스프레드시트 config 시트 B1에 저장."""
+    enc = _get_fernet().encrypt(plain_password.encode()).decode()
+    _get_budget_config_worksheet().update_acell("B1", enc)
+
+
+def check_approval_password(plain_password: str) -> bool:
+    """입력한 비밀번호가 결재 비밀번호와 일치하는지 확인. 결재 비밀번호 미설정 시 False."""
+    expected = get_approval_password()
+    if expected is None:
+        return False
+    return plain_password == expected
 
 
 def _get_sessions_worksheet():

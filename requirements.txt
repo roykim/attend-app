@@ -8,4 +8,5 @@ streamlit-cropper
 selenium
 beautifulsoup4
 cryptography
+weasyprint
 

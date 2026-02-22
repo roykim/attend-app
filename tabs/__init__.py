@@ -7,6 +7,7 @@ from tabs.tab_individual import render as render_individual
 from tabs.tab_newbeliever_register import render as render_newbeliever_register
 from tabs.tab_newbeliever_status import render as render_newbeliever_status
 from tabs.tab_class_info import render as render_class_info
+from tabs.tab_budget_request import render as render_budget_request
 
 __all__ = [
     "render_attendance",
@@ -15,4 +16,5 @@ __all__ = [
     "render_newbeliever_register",
     "render_newbeliever_status",
     "render_class_info",
+    "render_budget_request",
 ]

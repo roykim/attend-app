@@ -18,6 +18,7 @@ from tabs import (
     render_newbeliever_register,
     render_newbeliever_status,
     render_class_info,
+    render_budget_request,
 )
 
 
@@ -54,13 +55,14 @@ sheets.get_sheet()  # 연결 검증 및 세션 캐시
 # ------------------------
 # 탭 UI
 # ------------------------
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📋 출석 입력",
     "📊 출석 통계",
     "📌 개별 출석 확인",
     "✝️ 새신자 등록",
     "📋 새신자 현황",
     "📂 반정보",
+    "💰 예산청구",
 ])
 
 render_attendance(tab1)
@@ -69,3 +71,4 @@ render_individual(tab3)
 render_newbeliever_register(tab4)
 render_newbeliever_status(tab5)
 render_class_info(tab6)
+render_budget_request(tab7)
