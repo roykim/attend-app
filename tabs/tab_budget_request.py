@@ -213,10 +213,16 @@ def _print_html(reg_no: str, row, ev_b64_list: list) -> str:
 """
 
 
-def _render_print_view(reg_no: str):
-    """인쇄 뷰: A4 용지 미리보기, 브라우저 인쇄(Ctrl+P / Cmd+P)."""
-    if st.button("← 상세보기로", key="budget_back_to_detail"):
-        st.session_state.budget_view = "detail"
+def _render_detail_view(reg_no: str):
+    """조회 화면 2단계: 인쇄 보기(청구서 양식) + 승인."""
+    st.markdown(
+        "<style>.main .block-container { padding: 0 !important; max-width: 100% !important; }</style>",
+        unsafe_allow_html=True,
+    )
+    if st.button("← 목록으로", key="budget_back_to_list"):
+        st.session_state.budget_view = "list"
+        if "budget_selected_reg_no" in st.session_state:
+            del st.session_state["budget_selected_reg_no"]
         st.rerun()
 
     df = get_budget_requests_data()
@@ -231,63 +237,10 @@ def _render_print_view(reg_no: str):
     st.markdown(_print_html(reg_no, row, ev_b64_list), unsafe_allow_html=True)
     st.caption("**Ctrl+P** (Mac: **Cmd+P**)로 현재 화면을 인쇄하세요.")
 
-
-def _render_detail_view(reg_no: str):
-    """조회 화면 2단계: 선택한 건 상세보기 + 승인."""
-    if st.button("← 목록으로", key="budget_back_to_list"):
-        st.session_state.budget_view = "list"
-        if "budget_selected_reg_no" in st.session_state:
-            del st.session_state["budget_selected_reg_no"]
-        st.rerun()
-
-    df = get_budget_requests_data()
-    match = df[df["등록번호"].astype(str) == str(reg_no)]
-    if match.empty:
-        st.warning("해당 건을 찾을 수 없습니다.")
-        return
-    row = match.iloc[0]
-
-    st.subheader(f"등록번호 {reg_no} 상세")
-
-    if st.button("인쇄하기", key="budget_go_print"):
-        st.session_state.budget_view = "print"
-        st.rerun()
-
-    def _detail_row(label: str, value):
-        v = value if value is not None and str(value).strip() else "-"
-        left, right = st.columns([1, 2])
-        with left:
-            st.markdown(f"**{label}**")
-        with right:
-            st.write(v)
-
-    _detail_row("지출 날짜", row.get("지출날짜"))
-    _detail_row("청구 내용", row.get("청구내용"))
-    _detail_row("청구 금액", row.get("청구금액"))
-    _detail_row("그룹명", row.get("그룹명"))
-    _detail_row("해당 인원수 (명)", row.get("인원수"))
-    _detail_row("세부 내역", row.get("세부내역"))
-    _detail_row("입금 계좌", row.get("입금계좌"))
-    _detail_row("청구 날짜", row.get("청구날짜"))
-    _detail_row("청구자", row.get("청구자"))
-    _detail_row("결재상태", row.get("결재상태"))
-    _detail_row("결재일시", row.get("결재일시"))
-
-    ev_labels = [f"증빙{i}" for i in range(1, MAX_EVIDENCES + 1)]
-    ev_b64_list = [row.get(lbl) for lbl in ev_labels if row.get(lbl)]
-    if ev_b64_list:
-        st.markdown("**증빙**")
-        for idx, b64 in enumerate(ev_b64_list):
-            try:
-                raw = base64.b64decode(b64)
-                st.image(raw, caption=f"증빙 {idx + 1}", use_container_width=True)
-            except Exception:
-                st.caption(f"증빙 {idx + 1} (미리보기 불가)")
-
     status = str(row.get("결재상태", "")).strip()
     if status in ("", "대기"):
         st.divider()
-        st.caption("위 내용을 확인한 뒤, 결재 비밀번호를 입력하고 승인하세요.")
+        st.caption("위 청구서를 확인한 뒤, 결재 비밀번호를 입력하고 승인하세요.")
         approve_pw = st.text_input("결재 비밀번호", type="password", key="budget_approve_pw_detail", placeholder="결재 비밀번호 입력")
         if st.button("승인 (결재)", key="budget_approve_btn_detail"):
             ok, msg = _do_approve(reg_no, approve_pw)
@@ -363,14 +316,6 @@ def render(tab):
             reg_no = st.session_state.get("budget_selected_reg_no")
             if reg_no:
                 _render_detail_view(reg_no)
-            else:
-                st.session_state.budget_view = "list"
-                st.rerun()
-            return
-        if st.session_state.get("budget_view") == "print":
-            reg_no = st.session_state.get("budget_selected_reg_no")
-            if reg_no:
-                _render_print_view(reg_no)
             else:
                 st.session_state.budget_view = "list"
                 st.rerun()
