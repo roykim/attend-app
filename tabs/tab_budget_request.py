@@ -10,13 +10,6 @@ import streamlit as st
 from PIL import Image
 from streamlit_cropper import st_cropper
 
-try:
-    from weasyprint import HTML as WeasyHTML
-    WEASYPRINT_AVAILABLE = True
-except (ImportError, OSError):
-    WeasyHTML = None
-    WEASYPRINT_AVAILABLE = False
-
 import auth
 from config import PHOTO_B64_MAX
 from photo_utils import image_to_base64_for_sheet
@@ -220,106 +213,8 @@ def _print_html(reg_no: str, row, ev_b64_list: list) -> str:
 """
 
 
-def _pdf_html(reg_no: str, row, ev_b64_list: list) -> str:
-    """PDF 전용 standalone HTML (WeasyPrint용). A4 한 장, 여백 15mm, 내용만 포함."""
-    def v(key):
-        x = row.get(key)
-        if x is None or (isinstance(x, float) and pd.isna(x)):
-            return "-"
-        s = str(x).strip()
-        return _safe(s) if s and s.lower() != "nan" else "-"
-
-    ev_html = ""
-    if ev_b64_list:
-        ev_items = []
-        for i, b64 in enumerate(ev_b64_list[:6]):
-            ev_items.append(
-                f'<div class="pdf-ev-item">'
-                f'<span class="pdf-ev-label">증빙 {i+1}</span>'
-                f'<img src="data:image/jpeg;base64,{b64}" alt="증빙{i+1}" class="pdf-ev-img"/>'
-                f'</div>'
-            )
-        ev_html = (
-            '<div class="pdf-ev-section">'
-            '<p class="pdf-ev-title">증빙</p>'
-            '<div class="pdf-ev-row">' + "".join(ev_items) + "</div></div>"
-        )
-    else:
-        ev_html = '<div class="pdf-ev-section"></div>'
-
-    return f"""<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <style>
-    /* PDF도 인쇄 미리보기와 동일: A4 210×297mm, 내부 여백 15mm → 내용 180×267mm, 페이지 여백 없음 */
-    @page {{ size: A4; margin: 0; }}
-    body {{ margin: 0; padding: 0; background: #fff; font-family: sans-serif; color: #000; }}
-    .sheet {{ width: 210mm; min-height: 297mm; box-sizing: border-box; padding: 15mm; display: flex; flex-direction: column; overflow: hidden; }}
-    .sheet * {{ box-sizing: border-box; }}
-    .sheet .pdf-top {{ flex: 0 0 auto; }}
-    .sheet .pdf-title {{ font-size: 1.5rem; font-weight: 700; text-align: center; margin: 0 0 12px 0; color: #000; }}
-    .sheet table {{ width: 100%; border-collapse: collapse; font-size: 0.85rem; color: #000; table-layout: fixed; }}
-    .sheet th, .sheet td {{ border: 1px solid #000; padding: 5px 8px; vertical-align: top; color: #000; }}
-    .sheet th {{ width: 28%; background: #f0f0f0; font-weight: 600; text-align: center; }}
-    .sheet td {{ text-align: left; }}
-    .sheet .pdf-footer {{ margin: 10px 0 0 0; text-align: right; font-size: 0.95rem; color: #000; }}
-    .sheet .pdf-ev-section {{ flex: 1; min-height: 0; min-width: 0; width: 100%; margin-top: auto; display: flex; flex-direction: column; overflow: hidden; }}
-    .sheet .pdf-ev-title {{ flex: 0 0 auto; font-weight: 600; margin: 2px 0 1px 0; font-size: 0.9rem; color: #000; }}
-    .sheet .pdf-ev-row {{ flex: 1; min-height: 0; min-width: 0; width: 100%; display: flex; flex-direction: row; align-items: stretch; gap: 1mm; overflow: hidden; }}
-    .sheet .pdf-ev-item {{ flex: 1; min-width: 0; padding: 0; display: flex; flex-direction: column; align-items: center; text-align: center; overflow: hidden; border: 1px solid #000; box-sizing: border-box; }}
-    .sheet .pdf-ev-label {{ flex: 0 0 auto; font-size: 0.65rem; color: #000; margin: 0; padding: 0 1px; }}
-    .sheet .pdf-ev-img {{ flex: 1; min-height: 0; min-width: 0; width: 100%; height: 100%; object-fit: contain; object-position: center; display: block; border: none; margin: 0; padding: 0; }}
-  </style>
-</head>
-<body>
-  <div class="sheet">
-    <div class="pdf-top">
-      <h1 class="pdf-title">예산 청구서</h1>
-      <table>
-        <tr><th>등록번호</th><td>{_safe(str(reg_no))}</td></tr>
-        <tr><th>지출 날짜</th><td>{v("지출날짜")}</td></tr>
-        <tr><th>청구 내용</th><td>{v("청구내용")}</td></tr>
-        <tr><th>청구 금액</th><td>{v("청구금액")}</td></tr>
-        <tr><th>그룹명</th><td>{v("그룹명")}</td></tr>
-        <tr><th>해당 인원수 (명)</th><td>{v("인원수")}</td></tr>
-        <tr><th>세부 내역</th><td>{v("세부내역")}</td></tr>
-        <tr><th>입금 계좌</th><td>{v("입금계좌")}</td></tr>
-        <tr><th>청구 날짜</th><td>{v("청구날짜")}</td></tr>
-        <tr><th>청구자</th><td>{v("청구자")}</td></tr>
-        <tr><th>결재상태</th><td>{v("결재상태")}</td></tr>
-        <tr><th>결재일시</th><td>{v("결재일시")}</td></tr>
-      </table>
-      <p class="pdf-footer">확인자: 중등1부 김우종 부장</p>
-    </div>
-    {ev_html}
-  </div>
-</body>
-</html>"""
-
-
-def _generate_budget_pdf(reg_no: str) -> bytes | None:
-    """예산 청구서 PDF 바이트 생성. WeasyPrint 미설치 시 None."""
-    if not WEASYPRINT_AVAILABLE:
-        return None
-    df = get_budget_requests_data()
-    match = df[df["등록번호"].astype(str) == str(reg_no)]
-    if match.empty:
-        return None
-    row = match.iloc[0]
-    ev_labels = [f"증빙{i}" for i in range(1, MAX_EVIDENCES + 1)]
-    ev_b64_list = [row.get(lbl) for lbl in ev_labels if row.get(lbl)]
-    html_str = _pdf_html(reg_no, row, ev_b64_list)
-    buf = io.BytesIO()
-    try:
-        WeasyHTML(string=html_str).write_pdf(target=buf)
-        return buf.getvalue()
-    except Exception:
-        return None
-
-
 def _render_print_view(reg_no: str):
-    """인쇄/PDF 뷰: A4 용지 미리보기 + PDF 다운로드(권장) 또는 브라우저 인쇄."""
+    """인쇄 뷰: A4 용지 미리보기, 브라우저 인쇄(Ctrl+P / Cmd+P)."""
     if st.button("← 상세보기로", key="budget_back_to_detail"):
         st.session_state.budget_view = "detail"
         st.rerun()
@@ -334,24 +229,7 @@ def _render_print_view(reg_no: str):
     ev_b64_list = [row.get(lbl) for lbl in ev_labels if row.get(lbl)]
 
     st.markdown(_print_html(reg_no, row, ev_b64_list), unsafe_allow_html=True)
-
-    # PDF 다운로드(권장): 서버에서 A4 한 장 PDF 생성
-    pdf_bytes = _generate_budget_pdf(reg_no)
-    if pdf_bytes:
-        st.download_button(
-            label="PDF 다운로드",
-            data=pdf_bytes,
-            file_name=f"예산청구서_{reg_no}.pdf",
-            mime="application/pdf",
-            key="budget_pdf_download",
-        )
-        st.caption("PDF를 다운로드한 뒤 인쇄하세요. 또는 브라우저에서 **Ctrl+P** (Mac: **Cmd+P**)로 현재 화면을 인쇄할 수 있습니다.")
-    else:
-        if not WEASYPRINT_AVAILABLE:
-            st.info("PDF 생성을 사용하려면 `pip install weasyprint` 후 서버를 재시작해 주세요.")
-        else:
-            st.warning("PDF 생성에 실패했습니다. 브라우저에서 **Ctrl+P** (Mac: **Cmd+P**)로 현재 화면을 인쇄해 주세요.")
-        st.caption("Ctrl+P (Mac: Cmd+P)로 현재 화면 인쇄")
+    st.caption("**Ctrl+P** (Mac: **Cmd+P**)로 현재 화면을 인쇄하세요.")
 
 
 def _render_detail_view(reg_no: str):
