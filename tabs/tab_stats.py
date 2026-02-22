@@ -63,8 +63,9 @@ def render(tab):
             fig1.update_layout(
                 xaxis_tickangle=-45, margin=dict(b=80), xaxis_title="", yaxis_title="출석인원",
                 yaxis=dict(dtick=_y_dtick(max1), tickformat=".0f"),
+                dragmode=False,
             )
-            st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False})
 
         st.subheader("2. 학년별 출석 (주일)")
         weekly_by_grade = df_att.groupby(["주일_기준", "학년"]).size().reset_index(name="출석인원")
@@ -79,8 +80,9 @@ def render(tab):
             fig2.update_layout(
                 xaxis_tickangle=-45, margin=dict(b=80), xaxis_title="", yaxis_title="출석인원", legend_title="학년",
                 yaxis=dict(dtick=_y_dtick(max2), tickformat=".0f"),
+                dragmode=False,
             )
-            st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False})
 
         st.subheader("3. 학년별 반별 출석 (주일)")
         grades_list = sorted(df_att["학년"].dropna().unique().tolist(), key=str)
@@ -100,8 +102,9 @@ def render(tab):
                 xaxis_tickangle=-45, xaxis_title="", yaxis_title="출석인원",
                 margin=dict(b=80, t=40), legend_title="반",
                 yaxis=dict(dtick=_y_dtick(max_cls), tickformat=".0f"),
+                dragmode=False,
             )
-            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+            st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False})
 
         # 4. 날짜별(주일) 새신자 등록자 수 (맨 아랫쪽)
         st.subheader("4. 주일별 새신자 등록자 수")
@@ -132,7 +135,8 @@ def render(tab):
                         fig_nb.update_layout(
                             xaxis_tickangle=-45, margin=dict(b=80), xaxis_title="", yaxis_title="새신자 등록(명)",
                             yaxis=dict(dtick=_y_dtick(max_nb), tickformat=".0f"),
+                            dragmode=False,
                         )
-                        st.plotly_chart(fig_nb, use_container_width=True, config={"displayModeBar": False})
+                        st.plotly_chart(fig_nb, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False})
         except Exception:
             st.caption("새신자 데이터를 불러올 수 없습니다.")

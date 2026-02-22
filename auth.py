@@ -41,14 +41,19 @@ def _get_config_worksheet():
 
 
 def _get_budget_config_worksheet():
-    """예산청구 전용 스프레드시트 안의 'config' 시트 반환. 없으면 생성. (결재 비밀번호 저장용)"""
+    """예산청구 전용 스프레드시트 안의 'config' 시트 반환. 없으면 생성. (결재/조회 비밀번호, 결재자 정보). 최소 6행 3열 보장."""
     import gspread
     sheet = _client.open(BUDGET_SPREADSHEET_NAME)
     try:
-        return sheet.worksheet("config")
+        ws = sheet.worksheet("config")
     except gspread.exceptions.WorksheetNotFound:
-        sheet.add_worksheet(title="config", rows=2, cols=2)
+        sheet.add_worksheet(title="config", rows=6, cols=3)
         return sheet.worksheet("config")
+    if ws.row_count < 6:
+        ws.add_rows(6 - ws.row_count)
+    if ws.col_count < 3:
+        ws.add_cols(3 - ws.col_count)
+    return ws
 
 
 def get_stored_password():
@@ -69,9 +74,64 @@ def set_stored_password(plain_password: str):
     _get_config_worksheet().update_acell("A1", enc)
 
 
-def get_approval_password():
-    """결재(승인)용 비밀번호를 예산청구 전용 스프레드시트 config 시트 B1에서 읽어 복호화. 없으면 None."""
+def _get_approval_config_year():
+    """결재 설정이 저장된 연도. B5. 없거나 현재 연도와 다르면 None (매년 1월 1일 리셋)."""
     try:
+        ws = _get_budget_config_worksheet()
+        y = ws.acell("B5").value
+        if not y:
+            return None
+        return str(y).strip()
+    except Exception:
+        return None
+
+
+def get_budget_config():
+    """예산 조회/결재 설정을 한 번의 시트 읽기로 반환. B1:B5, C1 사용.
+    반환: {"year_ok": bool, "approval_password": str|None, "view_password": str|None, "approver_info": dict|None}
+    """
+    try:
+        ws = _get_budget_config_worksheet()
+        # B1:B5, C1 한 번에 읽기 (B1~B5가 1열, C1은 2열 첫 행)
+        rows = ws.get("B1:C5")
+        if not rows or len(rows) < 5:
+            return {"year_ok": False, "approval_password": None, "view_password": None, "approver_info": None}
+        current_year = str(datetime.now().year)
+        year_val = (rows[4][0] if len(rows[4]) > 0 else None) or ""
+        year_ok = str(year_val).strip() == current_year
+        if not year_ok:
+            return {"year_ok": False, "approval_password": None, "view_password": None, "approver_info": None}
+        approval_pw = None
+        view_pw = None
+        fernet = _get_fernet()
+        b1_enc = (rows[0][0] if len(rows[0]) > 0 else None) or ""
+        if b1_enc and str(b1_enc).strip():
+            try:
+                approval_pw = fernet.decrypt(str(b1_enc).strip().encode()).decode()
+            except Exception:
+                pass
+        c1_enc = (rows[0][1] if len(rows[0]) > 1 else None) or ""
+        if c1_enc and str(c1_enc).strip():
+            try:
+                view_pw = fernet.decrypt(str(c1_enc).strip().encode()).decode()
+            except Exception:
+                pass
+        dept = (rows[1][0] if len(rows[1]) > 0 else None) or ""
+        name = (rows[2][0] if len(rows[2]) > 0 else None) or ""
+        title = (rows[3][0] if len(rows[3]) > 0 else None) or ""
+        dept, name, title = str(dept).strip(), str(name).strip(), str(title).strip()
+        approver_info = {"부서": dept, "이름": name, "직책": title} if (dept or name or title) else None
+        return {"year_ok": True, "approval_password": approval_pw, "view_password": view_pw, "approver_info": approver_info}
+    except Exception:
+        return {"year_ok": False, "approval_password": None, "view_password": None, "approver_info": None}
+
+
+def get_approval_password():
+    """결재(승인)용 비밀번호. B1. 저장 연도가 현재 연도가 아니면 None(리셋)."""
+    try:
+        current_year = str(datetime.now().year)
+        if _get_approval_config_year() != current_year:
+            return None
         ws = _get_budget_config_worksheet()
         enc = ws.acell("B1").value
         if not enc or not enc.strip():
@@ -82,9 +142,35 @@ def get_approval_password():
 
 
 def set_approval_password(plain_password: str):
-    """결재 비밀번호를 암호화해 예산청구 전용 스프레드시트 config 시트 B1에 저장."""
+    """결재 비밀번호를 B1에 암호화 저장, B5에 현재 연도 저장."""
     enc = _get_fernet().encrypt(plain_password.encode()).decode()
-    _get_budget_config_worksheet().update_acell("B1", enc)
+    ws = _get_budget_config_worksheet()
+    ws.update_acell("B1", enc)
+    ws.update_acell("B5", str(datetime.now().year))
+
+
+def get_approver_info():
+    """결재자 정보 (부서, 이름, 직책). B2,B3,B4. 저장 연도가 현재가 아니면 None."""
+    try:
+        current_year = str(datetime.now().year)
+        if _get_approval_config_year() != current_year:
+            return None
+        ws = _get_budget_config_worksheet()
+        dept = (ws.acell("B2").value or "").strip()
+        name = (ws.acell("B3").value or "").strip()
+        title = (ws.acell("B4").value or "").strip()
+        if not dept and not name and not title:
+            return None
+        return {"부서": dept, "이름": name, "직책": title}
+    except Exception:
+        return None
+
+
+def set_approver_info(dept: str, name: str, title: str):
+    """결재자 정보를 B2,B3,B4에 저장, B5에 현재 연도 저장."""
+    ws = _get_budget_config_worksheet()
+    dept_s, name_s, title_s = (dept or "").strip(), (name or "").strip(), (title or "").strip()
+    ws.update("B2:B5", [[dept_s], [name_s], [title_s], [str(datetime.now().year)]])
 
 
 def check_approval_password(plain_password: str) -> bool:
@@ -93,6 +179,54 @@ def check_approval_password(plain_password: str) -> bool:
     if expected is None:
         return False
     return plain_password == expected
+
+
+def get_view_password():
+    """조회용 비밀번호. C1. 저장 연도가 현재 연도가 아니면 None."""
+    try:
+        current_year = str(datetime.now().year)
+        if _get_approval_config_year() != current_year:
+            return None
+        ws = _get_budget_config_worksheet()
+        enc = ws.acell("C1").value
+        if not enc or not enc.strip():
+            return None
+        return _get_fernet().decrypt(enc.strip().encode()).decode()
+    except Exception:
+        return None
+
+
+def set_view_password(plain_password: str):
+    """조회 비밀번호를 C1에 암호화 저장."""
+    enc = _get_fernet().encrypt(plain_password.encode()).decode()
+    _get_budget_config_worksheet().update_acell("C1", enc)
+
+
+def check_view_or_approval_password(plain_password: str) -> bool:
+    """입력한 비밀번호가 조회 비밀번호 또는 결재 비밀번호와 일치하면 True."""
+    view_pw = get_view_password()
+    approval_pw = get_approval_password()
+    return check_view_or_approval_password_given(plain_password, view_pw, approval_pw)
+
+
+def check_view_or_approval_password_given(plain_password: str, view_password: str | None, approval_password: str | None) -> bool:
+    """입력 비밀번호가 조회 비밀번호 또는 결재 비밀번호와 일치하면 True. (API 호출 없음)"""
+    if not plain_password:
+        return False
+    if view_password and plain_password == view_password:
+        return True
+    if approval_password and plain_password == approval_password:
+        return True
+    return False
+
+
+def clear_budget_approval_config():
+    """예산청구 config 시트의 조회·결재 관련 셀(B1:B5, C1) 초기화."""
+    try:
+        ws = _get_budget_config_worksheet()
+        ws.batch_clear(["B1:B5", "C1"])
+    except Exception:
+        pass
 
 
 def _get_sessions_worksheet():

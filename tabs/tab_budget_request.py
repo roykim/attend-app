@@ -22,6 +22,16 @@ from sheets import (
     invalidate_sheets_cache,
 )
 
+# 예산청구 탭 인덱스 (app.py TAB_LABELS 기준). rerun 후에도 이 탭이 선택되도록 함.
+BUDGET_TAB_INDEX = 6
+
+
+def _rerun_keep_tab():
+    """결재 등으로 rerun 시 예산청구 탭이 유지되도록 세션에 저장 후 rerun."""
+    st.session_state["_budget_tab_index"] = BUDGET_TAB_INDEX
+    st.rerun()
+
+
 # 청구 내용 옵션 (라벨, 시트 저장값)
 CLAIM_CONTENT_OPTIONS = [
     "반친회",
@@ -64,9 +74,11 @@ def _render_list_view():
     """조회 화면 1단계: 리스트 (날짜, 청구 내용, 비용, 청구인, 승인 여부). 항목 선택 후 상세보기로 이동."""
     if st.button("← 신청 화면으로", key="budget_back_to_form"):
         st.session_state.budget_view = "form"
+        if "budget_view_authenticated" in st.session_state:
+            del st.session_state["budget_view_authenticated"]
         if "budget_selected_reg_no" in st.session_state:
             del st.session_state["budget_selected_reg_no"]
-        st.rerun()
+        _rerun_keep_tab()
 
     st.subheader("예산청구 리스트")
     df = get_budget_requests_data()
@@ -120,7 +132,7 @@ def _render_list_view():
     if st.button("상세보기", type="primary", key="budget_go_detail"):
         st.session_state.budget_view = "detail"
         st.session_state.budget_selected_reg_no = reg_nos[sel_idx]
-        st.rerun()
+        _rerun_keep_tab()
 
 
 def _safe(s: str) -> str:
@@ -138,6 +150,13 @@ def _print_html(reg_no: str, row, ev_b64_list: list) -> str:
             return "-"
         s = str(x).strip()
         return _safe(s) if s and s.lower() != "nan" else "-"
+
+    info = auth.get_approver_info()
+    confirmer = (
+        f"{info['부서']} {info['이름']} {info['직책']}".strip()
+        if info and (info.get("부서") or info.get("이름") or info.get("직책"))
+        else "-"
+    )
 
     ev_html = ""
     if ev_b64_list:
@@ -205,7 +224,7 @@ def _print_html(reg_no: str, row, ev_b64_list: list) -> str:
       <tr><th>결재상태</th><td>{v("결재상태")}</td></tr>
       <tr><th>결재일시</th><td>{v("결재일시")}</td></tr>
     </table>
-    <p class="print-footer">확인자: 중등1부 김우종 부장</p>
+    <p class="print-footer">확인자: {_safe(confirmer)}</p>
   </div>
   {ev_html}
   </div>
@@ -223,7 +242,7 @@ def _render_detail_view(reg_no: str):
         st.session_state.budget_view = "list"
         if "budget_selected_reg_no" in st.session_state:
             del st.session_state["budget_selected_reg_no"]
-        st.rerun()
+        _rerun_keep_tab()
 
     df = get_budget_requests_data()
     match = df[df["등록번호"].astype(str) == str(reg_no)]
@@ -240,13 +259,13 @@ def _render_detail_view(reg_no: str):
     status = str(row.get("결재상태", "")).strip()
     if status in ("", "대기"):
         st.divider()
-        st.caption("위 청구서를 확인한 뒤, 결재 비밀번호를 입력하고 승인하세요.")
+        st.caption("위 청구서 확인 후 결재 비밀번호를 입력하고 승인하세요.")
         approve_pw = st.text_input("결재 비밀번호", type="password", key="budget_approve_pw_detail", placeholder="결재 비밀번호 입력")
         if st.button("승인 (결재)", key="budget_approve_btn_detail"):
-            ok, msg = _do_approve(reg_no, approve_pw)
+            ok, msg = _do_approve(reg_no, approve_pw or "")
             if ok:
                 st.success(msg)
-                st.rerun()
+                _rerun_keep_tab()
             else:
                 st.error(msg)
     else:
@@ -254,7 +273,7 @@ def _render_detail_view(reg_no: str):
 
 
 def _do_approve(reg_no_sel: str, approve_pw: str) -> tuple[bool, str]:
-    """해당 등록번호 건을 승인. (성공 여부, 메시지) 반환."""
+    """해당 등록번호 건을 승인. (성공 여부, 메시지) 반환. 결재 비밀번호 일치 시에만 승인."""
     if not approve_pw:
         return False, "결재 비밀번호를 입력해 주세요."
     if not auth.check_approval_password(approve_pw):
@@ -287,29 +306,92 @@ def render(tab):
     with tab:
         st.title("💰 예산청구")
 
-        # ----- 결재 비밀번호 설정: 미설정일 때만 표시 -----
-        approval_pw = auth.get_approval_password()
-        if approval_pw is None:
-            with st.expander("🔐 결재 비밀번호 설정 (최초 1회)", expanded=True):
-                st.caption("결재 승인 시 사용할 비밀번호를 설정해 주세요. 설정 후 이 영역은 표시되지 않습니다.")
-                new_approval = st.text_input("결재 비밀번호", type="password", key="budget_approval_pw_set", placeholder="새 결재 비밀번호")
-                new_approval2 = st.text_input("결재 비밀번호 확인", type="password", key="budget_approval_pw_set2", placeholder="다시 입력")
-                if st.button("결재 비밀번호 저장", key="save_approval_pw"):
-                    if not new_approval or not new_approval2:
-                        st.error("비밀번호를 입력해 주세요.")
-                    elif new_approval != new_approval2:
-                        st.error("두 비밀번호가 일치하지 않습니다.")
-                    else:
-                        try:
-                            auth.set_approval_password(new_approval)
-                            st.success("결재 비밀번호가 저장되었습니다.")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"저장 실패: {e}")
-            st.divider()
+        # ----- 설정 한 번에 읽기 (API 호출 1회로 일관된 판단) -----
+        config = auth.get_budget_config()
+        need_setup = not config["year_ok"] or config["approval_password"] is None
+        budget_view = st.session_state.get("budget_view")
+        budget_view_authenticated = st.session_state.get("budget_view_authenticated")
 
-        # ----- 뷰 전환: 신청 폼 / 리스트 / 상세보기 -----
-        if st.session_state.get("budget_view") == "list":
+        # ----- 비밀번호 미설정 시: 설정 화면 (단, 이미 조회/상세에 인증된 상태면 설정창으로 끌어내지 않음) -----
+        if need_setup:
+            if budget_view in ("list", "detail") and budget_view_authenticated:
+                # 조회·상세에 이미 들어온 상태면 설정창 안 띄우고 그대로 목록/상세 유지
+                pass
+            else:
+                if budget_view in ("list", "detail"):
+                    st.session_state.budget_view = "form"
+                    if "budget_view_authenticated" in st.session_state:
+                        del st.session_state["budget_view_authenticated"]
+                    if "budget_selected_reg_no" in st.session_state:
+                        del st.session_state["budget_selected_reg_no"]
+                    _rerun_keep_tab()
+                with st.expander("🔐 비밀번호 및 결재자 정보 설정 (최초 1회 또는 매년 1월)", expanded=True):
+                    st.caption("예산 청구 메뉴 사용을 위해 아래를 입력한 뒤 저장하세요. **매년 1월 1일에 초기화**됩니다.")
+                    st.markdown("**조회 비밀번호** — 리스트 조회·상세 조회 진입용")
+                    view_pw1 = st.text_input("조회 비밀번호", type="password", key="budget_view_pw_1", placeholder="조회 비밀번호")
+                    view_pw2 = st.text_input("조회 비밀번호 확인", type="password", key="budget_view_pw_2", placeholder="다시 입력")
+                    st.markdown("**결재 비밀번호** — 조회 및 결재(승인)용")
+                    app_pw1 = st.text_input("결재 비밀번호", type="password", key="budget_approval_pw_1", placeholder="결재 비밀번호")
+                    app_pw2 = st.text_input("결재 비밀번호 확인", type="password", key="budget_approval_pw_2", placeholder="다시 입력")
+                    st.markdown("**결재자 정보** — 청구서 하단 확인자 표시용 (예: 중등1부 / 홍길동 / 부장)")
+                    app_dept = st.text_input("부서", key="budget_approver_dept", placeholder="예: 중등1부")
+                    app_name = st.text_input("이름", key="budget_approver_name", placeholder="예: 홍길동")
+                    app_title = st.text_input("직책", key="budget_approver_title", placeholder="예: 부장")
+                    if st.button("저장", key="budget_save_config"):
+                        err = None
+                        if not view_pw1 or not view_pw2:
+                            err = "조회 비밀번호를 입력해 주세요."
+                        elif view_pw1 != view_pw2:
+                            err = "조회 비밀번호가 일치하지 않습니다."
+                        elif not app_pw1 or not app_pw2:
+                            err = "결재 비밀번호를 입력해 주세요."
+                        elif app_pw1 != app_pw2:
+                            err = "결재 비밀번호가 일치하지 않습니다."
+                        elif not app_dept or not app_name or not app_title:
+                            err = "부서, 이름, 직책을 모두 입력해 주세요."
+                        if err:
+                            st.error(err)
+                        else:
+                            try:
+                                auth.set_approval_password(app_pw1)
+                                auth.set_approver_info(app_dept, app_name, app_title)
+                                auth.set_view_password(view_pw1)
+                                st.session_state.budget_view = "form"
+                                st.session_state.budget_view_authenticated = True
+                                st.success("설정이 저장되었습니다. 이제 예산 청구 신청과 조회를 사용할 수 있습니다.")
+                                _rerun_keep_tab()
+                            except Exception as e:
+                                st.error(f"저장 실패: {e}")
+                st.divider()
+                return
+
+        # ----- 조회 진입 시: 조회 비밀번호 또는 결재 비밀번호 입력 (동일 config로 검증) -----
+        if budget_view == "list":
+            if not budget_view_authenticated:
+                view_pw = config["view_password"]
+                apw = config["approval_password"]
+                if view_pw is None and apw is None:
+                    st.warning("비밀번호가 설정되지 않았습니다. 위에서 비밀번호를 설정해 주세요.")
+                    if st.button("확인", key="budget_gate_ok"):
+                        st.session_state.budget_view = "form"
+                        _rerun_keep_tab()
+                    return
+                st.subheader("예산 청구 조회")
+                st.caption("조회 비밀번호 또는 결재 비밀번호를 입력하세요.")
+                gate_pw = st.text_input("비밀번호", type="password", key="budget_view_gate_pw", placeholder="비밀번호 입력")
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("들어가기", key="budget_view_gate_btn", type="primary"):
+                        if auth.check_view_or_approval_password_given(gate_pw or "", view_pw, apw):
+                            st.session_state.budget_view_authenticated = True
+                            _rerun_keep_tab()
+                        else:
+                            st.error("비밀번호가 일치하지 않습니다.")
+                with col2:
+                    if st.button("취소", key="budget_view_gate_cancel"):
+                        st.session_state.budget_view = "form"
+                        _rerun_keep_tab()
+                return
             _render_list_view()
             return
         if st.session_state.get("budget_view") == "detail":
@@ -318,7 +400,7 @@ def render(tab):
                 _render_detail_view(reg_no)
             else:
                 st.session_state.budget_view = "list"
-                st.rerun()
+                _rerun_keep_tab()
             return
 
         st.subheader("예산 청구 신청")
@@ -446,7 +528,7 @@ def render(tab):
             with col2:
                 if st.button("삭제", key=f"budget_ev_del_{i}"):
                     ev_list.pop(i)
-                    st.rerun()
+                    _rerun_keep_tab()
 
         if len(ev_list) < MAX_EVIDENCES:
             with st.expander("➕ 증빙 추가 (파일 또는 촬영 후 영역 선택)", expanded=True):
@@ -486,7 +568,7 @@ def render(tab):
                             for k in ("budget_ev_file", "budget_ev_camera", "budget_ev_source"):
                                 if k in st.session_state:
                                     del st.session_state[k]
-                            st.rerun()
+                            _rerun_keep_tab()
                     except Exception:
                         st.caption("사진을 불러올 수 없습니다.")
 
@@ -547,7 +629,7 @@ def render(tab):
                             del st.session_state[key]
                     st.session_state.budget_evidence_list = []
                     st.session_state.budget_show_registered_message = True
-                    st.rerun()
+                    _rerun_keep_tab()
                 except Exception as e:
                     st.error(f"등록 실패: {e}")
 
@@ -556,4 +638,4 @@ def render(tab):
             st.session_state.budget_view = "list"
             if "budget_selected_reg_no" in st.session_state:
                 del st.session_state["budget_selected_reg_no"]
-            st.rerun()
+            _rerun_keep_tab()
