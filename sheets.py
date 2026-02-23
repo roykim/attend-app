@@ -2,6 +2,7 @@
 """구글 시트 연결 및 워크시트 getter (세션·캐시 활용)."""
 
 import time
+from datetime import datetime
 
 import gspread
 import pandas as pd
@@ -235,15 +236,27 @@ def get_budget_requests_data():
 
 
 def get_next_budget_reg_no():
-    """다음 등록번호 (숫자). 기존 최대값+1, 없으면 1."""
+    """다음 등록번호: 오늘 날짜 + 일련번호 (예: 20260223-001). 같은 날짜 내 nnn만 증가."""
+    today_prefix = datetime.now().strftime("%Y%m%d")
     df = get_budget_requests_data()
     if df.empty or "등록번호" not in df.columns:
-        return 1
+        return f"{today_prefix}-001"
     try:
-        nums = pd.to_numeric(df["등록번호"], errors="coerce").dropna()
-        return int(nums.max()) + 1 if len(nums) else 1
+        reg_col = df["등록번호"].astype(str).str.strip()
+        today_regs = reg_col[reg_col.str.startswith(today_prefix + "-")]
+        if today_regs.empty:
+            return f"{today_prefix}-001"
+        def parse_seq(s):
+            try:
+                part = s.split("-", 1)[-1]
+                return int(part)
+            except (ValueError, IndexError):
+                return 0
+        nums = today_regs.apply(parse_seq)
+        next_n = int(nums.max()) + 1
+        return f"{today_prefix}-{next_n:03d}"
     except Exception:
-        return 1
+        return f"{today_prefix}-001"
 
 
 def get_last_budget_defaults():
@@ -255,3 +268,61 @@ def get_last_budget_defaults():
     acc = row.get("입금계좌") or row.get("입금 계좌")
     claimer = row.get("청구자")
     return (str(acc).strip() if acc and str(acc).strip() else None), (str(claimer).strip() if claimer and str(claimer).strip() else None)
+
+
+# ------------------------
+# 예산청구: 단말(사용자)별 입금계좌·청구자 기본값 (user_defaults 시트)
+# ------------------------
+BUDGET_USER_DEFAULTS_HEADERS = ["fingerprint_hash", "입금계좌", "청구자", "updated_at"]
+
+
+def _get_budget_user_defaults_ws():
+    """예산청구 스프레드시트 내 'user_defaults' 시트. 단말별 입금계좌·청구자 저장."""
+    sheet = get_budget_sheet()
+    try:
+        ws = sheet.worksheet("user_defaults")
+    except gspread.exceptions.WorksheetNotFound:
+        sheet.add_worksheet(title="user_defaults", rows=2, cols=len(BUDGET_USER_DEFAULTS_HEADERS))
+        ws = sheet.worksheet("user_defaults")
+        ws.append_row(BUDGET_USER_DEFAULTS_HEADERS)
+    return ws
+
+
+def get_budget_user_defaults(fingerprint_hash: str) -> tuple[str | None, str | None]:
+    """단말 fingerprint에 해당하는 입금계좌, 청구자 반환. 없으면 (None, None)."""
+    if not fingerprint_hash or not str(fingerprint_hash).strip():
+        return None, None
+    try:
+        ws = _get_budget_user_defaults_ws()
+        rows = ws.get_all_values()
+        if not rows or len(rows) < 2:
+            return None, None
+        fp = str(fingerprint_hash).strip()
+        for row in rows[1:]:
+            if len(row) >= 3 and str(row[0]).strip() == fp:
+                acc = (row[1] or "").strip() or None
+                claimer = (row[2] or "").strip() or None
+                return acc, claimer
+        return None, None
+    except Exception:
+        return None, None
+
+
+def set_budget_user_defaults(fingerprint_hash: str, account: str, claimer: str):
+    """단말 fingerprint에 대해 입금계좌·청구자 저장. 기존 행이 있으면 갱신, 없으면 추가."""
+    if not fingerprint_hash or not str(fingerprint_hash).strip():
+        return
+    account_s = (account or "").strip()
+    claimer_s = (claimer or "").strip()
+    try:
+        ws = _get_budget_user_defaults_ws()
+        rows = ws.get_all_values()
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        fp = str(fingerprint_hash).strip()
+        for i in range(1, len(rows)):
+            if len(rows[i]) >= 1 and str(rows[i][0]).strip() == fp:
+                ws.update(f"A{i+1}:D{i+1}", [[fp, account_s, claimer_s, now_str]])
+                return
+        ws.append_row([fp, account_s, claimer_s, now_str])
+    except Exception:
+        pass

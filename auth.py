@@ -220,6 +220,11 @@ def check_view_or_approval_password_given(plain_password: str, view_password: st
     return False
 
 
+def get_fingerprint_hash() -> str | None:
+    """현재 요청의 단말(브라우저) 식별용 해시. 단말별 기본값 저장/로드에 사용."""
+    return _get_fingerprint_hash()
+
+
 def clear_budget_approval_config():
     """예산청구 config 시트의 조회·결재 관련 셀(B1:B5, C1) 초기화."""
     try:

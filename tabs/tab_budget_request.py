@@ -16,10 +16,11 @@ from photo_utils import image_to_base64_for_sheet
 from sheets import (
     get_budget_request_ws,
     get_budget_requests_data,
-    get_last_budget_defaults,
+    get_budget_user_defaults,
     get_next_budget_reg_no,
     get_students_data,
     invalidate_sheets_cache,
+    set_budget_user_defaults,
 )
 
 # 예산청구 탭 인덱스 (app.py TAB_LABELS 기준). rerun 후에도 이 탭이 선택되도록 함.
@@ -35,33 +36,42 @@ def _rerun_keep_tab():
 # 청구 내용 옵션 (라벨, 시트 저장값)
 CLAIM_CONTENT_OPTIONS = [
     "반친회",
-    "찬양팀 연습간식",
+    "모임간식",
     "전도축제",
     "새신자용",
     "수련회",
+    "심방",
     "기타",
 ]
 
 # 그룹명: 학년/반 또는 팀
-GROUP_TYPE_OPTIONS = ["학년/반", "찬양팀", "미디어팀", "연극팀"]
+GROUP_TYPE_OPTIONS = ["학년/반", "찬양팀", "미디어팀", "연극팀", "기타"]
 
 MAX_EVIDENCES = 10
 
 
 def _default_account():
-    """입금계좌 기본값: 세션 유지 → 마지막 등록 건."""
+    """입금계좌 기본값: 세션 → 단말(브라우저)별 저장값 → 빈값."""
     if "budget_last_account" in st.session_state and st.session_state.budget_last_account:
         return st.session_state.budget_last_account
-    acc, _ = get_last_budget_defaults()
-    return acc or ""
+    fp = auth.get_fingerprint_hash()
+    if fp:
+        acc, _ = get_budget_user_defaults(fp)
+        if acc:
+            return acc
+    return ""
 
 
 def _default_claimer():
-    """청구자 기본값: 세션 유지 → 마지막 등록 건."""
+    """청구자 기본값: 세션 → 단말(브라우저)별 저장값 → 빈값."""
     if "budget_last_claimer" in st.session_state and st.session_state.budget_last_claimer:
         return st.session_state.budget_last_claimer
-    _, claimer = get_last_budget_defaults()
-    return claimer or ""
+    fp = auth.get_fingerprint_hash()
+    if fp:
+        _, claimer = get_budget_user_defaults(fp)
+        if claimer:
+            return claimer
+    return ""
 
 
 def _evidence_list():
@@ -71,7 +81,7 @@ def _evidence_list():
 
 
 def _render_list_view():
-    """조회 화면 1단계: 리스트 (날짜, 청구 내용, 비용, 청구인, 승인 여부). 항목 선택 후 상세보기로 이동."""
+    """조회 화면 1단계: 리스트 (날짜, 청구 내용, 비용, 청구인, 승인 여부). 대기 최상위·최신순. 상세보기 선택 후 버튼으로 이동."""
     if st.button("← 신청 화면으로", key="budget_back_to_form"):
         st.session_state.budget_view = "form"
         if "budget_view_authenticated" in st.session_state:
@@ -86,6 +96,15 @@ def _render_list_view():
         st.info("등록된 예산 청구가 없습니다.")
         return
 
+    # 정렬: 대기 최상위, 그 다음 최신 날짜순
+    date_col = "청구날짜" if "청구날짜" in df.columns else "지출날짜"
+    status_col = "결재상태"
+    df = df.copy()
+    df["_대기우선"] = (df[status_col].fillna("대기").astype(str).str.strip() != "대기").astype(int)  # 대기=0, 그외=1 → 오름차순 시 대기 먼저
+    date_vals = pd.to_datetime(df[date_col], errors="coerce")
+    df["_날짜"] = date_vals
+    df = df.sort_values(by=["_대기우선", "_날짜"], ascending=[True, False]).drop(columns=["_대기우선", "_날짜"])
+
     def _fmt_amount(val):
         """숫자를 3자리마다 콤마 포맷 (예: 1000000 -> 1,000,000)."""
         try:
@@ -93,7 +112,6 @@ def _render_list_view():
         except (ValueError, TypeError):
             return str(val) if val else ""
 
-    date_col = "청구날짜" if "청구날짜" in df.columns else "지출날짜"
     n = len(df)
     raw_amounts = df["청구금액"] if "청구금액" in df.columns else pd.Series([""] * n)
     list_df = pd.DataFrame({
@@ -104,9 +122,6 @@ def _render_list_view():
         "청구인": df["청구자"].astype(str) if "청구자" in df.columns else [""] * n,
         "승인 여부": df["결재상태"].fillna("대기").astype(str).str.strip() if "결재상태" in df.columns else ["대기"] * n,
     })
-    st.dataframe(list_df, use_container_width=True, hide_index=True)
-
-    # 항목 선택 후 상세보기 스텝으로
     reg_nos = df["등록번호"].astype(str).tolist()
     dates = list_df["날짜"].astype(str).tolist()
     contents = list_df["청구 내용"].astype(str).tolist()
@@ -133,6 +148,8 @@ def _render_list_view():
         st.session_state.budget_view = "detail"
         st.session_state.budget_selected_reg_no = reg_nos[sel_idx]
         _rerun_keep_tab()
+
+    st.dataframe(list_df, use_container_width=True, hide_index=True)
 
 
 def _safe(s: str) -> str:
@@ -259,10 +276,13 @@ def _render_detail_view(reg_no: str):
     status = str(row.get("결재상태", "")).strip()
     if status in ("", "대기"):
         st.divider()
-        st.caption("위 청구서 확인 후 결재 비밀번호를 입력하고 승인하세요.")
-        approve_pw = st.text_input("결재 비밀번호", type="password", key="budget_approve_pw_detail", placeholder="결재 비밀번호 입력")
-        if st.button("승인 (결재)", key="budget_approve_btn_detail"):
-            ok, msg = _do_approve(reg_no, approve_pw or "")
+        with st.form("budget_approve_form"):
+            st.caption("위 청구서 확인 후 결재 비밀번호를 입력하고 승인하세요. (입력 후 **Enter**로 제출)")
+            approve_pw = st.text_input("결재 비밀번호", type="password", key="budget_approve_pw_detail", placeholder="결재 비밀번호 입력")
+            submitted_approve = st.form_submit_button("승인 (결재)", type="primary")
+        if submitted_approve:
+            pw = st.session_state.get("budget_approve_pw_detail", "")
+            ok, msg = _do_approve(reg_no, pw or "")
             if ok:
                 st.success(msg)
                 _rerun_keep_tab()
@@ -311,6 +331,40 @@ def render(tab):
         need_setup = not config["year_ok"] or config["approval_password"] is None
         budget_view = st.session_state.get("budget_view")
         budget_view_authenticated = st.session_state.get("budget_view_authenticated")
+
+        # ----- 조회·결재 비밀번호 초기화 (결재 비밀번호 확인 후에만 실행) -----
+        if not need_setup and budget_view == "form":
+            show_clear_confirm = st.session_state.get("budget_show_clear_confirm")
+            if not show_clear_confirm:
+                if st.button("조회·결재 비밀번호 초기화", key="budget_clear_config_btn"):
+                    st.session_state.budget_show_clear_confirm = True
+                    _rerun_keep_tab()
+            else:
+                with st.expander("🔒 조회·결재 비밀번호 초기화 (결재 비밀번호 필요)", expanded=True):
+                    st.caption("초기화하려면 **결재 비밀번호**를 입력하세요.")
+                    clear_pw = st.text_input("결재 비밀번호", type="password", key="budget_clear_pw", placeholder="결재 비밀번호 입력")
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        if st.button("초기화 실행", type="primary", key="budget_clear_do"):
+                            if auth.check_approval_password(clear_pw or ""):
+                                try:
+                                    auth.clear_budget_approval_config()
+                                    if "budget_show_clear_confirm" in st.session_state:
+                                        del st.session_state["budget_show_clear_confirm"]
+                                    st.session_state.budget_view = "form"
+                                    if "budget_view_authenticated" in st.session_state:
+                                        del st.session_state["budget_view_authenticated"]
+                                    st.success("조회·결재 비밀번호가 초기화되었습니다. 아래에서 다시 설정해 주세요.")
+                                    _rerun_keep_tab()
+                                except Exception as e:
+                                    st.error(f"초기화 실패: {e}")
+                            else:
+                                st.error("결재 비밀번호가 일치하지 않습니다.")
+                    with col_b:
+                        if st.button("취소", key="budget_clear_cancel"):
+                            if "budget_show_clear_confirm" in st.session_state:
+                                del st.session_state["budget_show_clear_confirm"]
+                            _rerun_keep_tab()
 
         # ----- 비밀번호 미설정 시: 설정 화면 (단, 이미 조회/상세에 인증된 상태면 설정창으로 끌어내지 않음) -----
         if need_setup:
@@ -377,20 +431,24 @@ def render(tab):
                         _rerun_keep_tab()
                     return
                 st.subheader("예산 청구 조회")
-                st.caption("조회 비밀번호 또는 결재 비밀번호를 입력하세요.")
-                gate_pw = st.text_input("비밀번호", type="password", key="budget_view_gate_pw", placeholder="비밀번호 입력")
-                col1, col2 = st.columns(2)
-                with col1:
-                    if st.button("들어가기", key="budget_view_gate_btn", type="primary"):
-                        if auth.check_view_or_approval_password_given(gate_pw or "", view_pw, apw):
-                            st.session_state.budget_view_authenticated = True
-                            _rerun_keep_tab()
-                        else:
-                            st.error("비밀번호가 일치하지 않습니다.")
-                with col2:
-                    if st.button("취소", key="budget_view_gate_cancel"):
-                        st.session_state.budget_view = "form"
+                with st.form("budget_view_gate_form"):
+                    st.caption("조회 비밀번호 또는 결재 비밀번호를 입력하세요. (입력 후 **Enter**로 제출)")
+                    gate_pw = st.text_input("비밀번호", type="password", key="budget_view_gate_pw", placeholder="비밀번호 입력")
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        submitted = st.form_submit_button("들어가기", type="primary")
+                    with col2:
+                        cancel = st.form_submit_button("취소")
+                if submitted:
+                    pw = st.session_state.get("budget_view_gate_pw", "")
+                    if auth.check_view_or_approval_password_given(pw or "", view_pw, apw):
+                        st.session_state.budget_view_authenticated = True
                         _rerun_keep_tab()
+                    else:
+                        st.error("비밀번호가 일치하지 않습니다.")
+                if cancel:
+                    st.session_state.budget_view = "form"
+                    _rerun_keep_tab()
                 return
             _render_list_view()
             return
@@ -404,10 +462,14 @@ def render(tab):
             return
 
         st.subheader("예산 청구 신청")
+        if st.button("📋 조회", key="budget_btn_list"):
+            st.session_state.budget_view = "list"
+            if "budget_selected_reg_no" in st.session_state:
+                del st.session_state["budget_selected_reg_no"]
+            _rerun_keep_tab()
 
         if st.session_state.pop("budget_show_registered_message", False):
             st.success("등록되었습니다.")
-            # 위젯이 이번 런에서 기본값을 쓰도록 session_state에 명시적으로 설정
             st.session_state["budget_expense_date"] = date.today()
             st.session_state["budget_claim_content"] = CLAIM_CONTENT_OPTIONS[0]
             st.session_state["budget_claim_amount"] = 0
@@ -422,19 +484,35 @@ def render(tab):
             if "budget_class" in st.session_state:
                 del st.session_state["budget_class"]
 
+        # 위젯 key만 사용해 세션과 동기화 (value= 병기 시 경고 방지)
+        if "budget_expense_date" not in st.session_state:
+            st.session_state["budget_expense_date"] = date.today()
+        if "budget_claim_content" not in st.session_state:
+            st.session_state["budget_claim_content"] = CLAIM_CONTENT_OPTIONS[0]
+        if "budget_claim_amount" not in st.session_state:
+            st.session_state["budget_claim_amount"] = 0
+        if "budget_detail" not in st.session_state:
+            st.session_state["budget_detail"] = ""
+        if "budget_account" not in st.session_state:
+            st.session_state["budget_account"] = _default_account()
+        if "budget_claim_date" not in st.session_state:
+            st.session_state["budget_claim_date"] = date.today()
+        if "budget_claimer" not in st.session_state:
+            st.session_state["budget_claimer"] = _default_claimer()
+        if "budget_group_type" not in st.session_state:
+            st.session_state["budget_group_type"] = GROUP_TYPE_OPTIONS[0]
+        if "budget_headcount" not in st.session_state:
+            st.session_state["budget_headcount"] = 0
+
         # ----- 폼 필드 -----
         expense_date = st.date_input(
             "지출 날짜",
-            value=st.session_state.get("budget_expense_date", date.today()),
             key="budget_expense_date",
             format="YYYY-MM-DD",
         )
-        _claim_default = st.session_state.get("budget_claim_content", CLAIM_CONTENT_OPTIONS[0])
-        _claim_index = CLAIM_CONTENT_OPTIONS.index(_claim_default) if _claim_default in CLAIM_CONTENT_OPTIONS else 0
         claim_content_sel = st.selectbox(
             "청구 내용",
             CLAIM_CONTENT_OPTIONS,
-            index=_claim_index,
             key="budget_claim_content",
         )
         claim_content_extra = ""
@@ -446,33 +524,28 @@ def render(tab):
             "청구 금액 (원) *",
             min_value=0,
             step=100,
-            value=st.session_state.get("budget_claim_amount", 0),
             key="budget_claim_amount",
             help="필수 입력",
         )
         detail_note = st.text_area(
             "구체적인 세부 내역",
-            value=st.session_state.get("budget_detail", ""),
             key="budget_detail",
             placeholder="사용처를 구체적으로 기록해 주세요. (예: OO 장소 간식비, OO 비품 구입 등)",
             help="사용처를 구체적으로 기록해 주세요.",
         )
         account = st.text_input(
             "입금 계좌 *",
-            value=st.session_state.get("budget_account", _default_account()),
             key="budget_account",
             placeholder="예: 신한 110-xxx-xxxxx 예금주명",
             help="필수 입력",
         )
         claim_date = st.date_input(
             "청구 날짜",
-            value=st.session_state.get("budget_claim_date", date.today()),
             key="budget_claim_date",
             format="YYYY-MM-DD",
         )
         claimer = st.text_input(
             "청구자 *",
-            value=st.session_state.get("budget_claimer", _default_claimer()),
             key="budget_claimer",
             placeholder="청구자 성함",
             help="필수 입력",
@@ -503,13 +576,12 @@ def render(tab):
             except Exception:
                 pass
         else:
-            group_name_value = group_type  # 찬양팀, 미디어팀, 연극팀
+            group_name_value = group_type  # 찬양팀, 미디어팀, 연극팀, 기타
 
         headcount = st.number_input(
             "해당 인원수 (명)",
             min_value=0,
             step=1,
-            value=st.session_state.get("budget_headcount", 0),
             key="budget_headcount",
         )
 
@@ -574,7 +646,7 @@ def render(tab):
 
         st.divider()
 
-        # ----- 예산 청구 등록 버튼 -----
+        # ----- 예산 청구 등록 버튼 (하단) -----
         if st.button("예산 청구 등록", type="primary", key="budget_submit"):
             account_stripped = (account or "").strip()
             claimer_stripped = (claimer or "").strip()
@@ -612,6 +684,9 @@ def render(tab):
                     get_budget_requests_data.clear()
                     st.session_state.budget_last_account = account_stripped
                     st.session_state.budget_last_claimer = claimer_stripped
+                    fp = auth.get_fingerprint_hash()
+                    if fp:
+                        set_budget_user_defaults(fp, account_stripped, claimer_stripped)
                     # 폼 초기화: 청구 금액·세부내역·그룹명 등 모든 입력창 리셋
                     form_keys = (
                         "budget_expense_date", "budget_claim_content", "budget_claim_extra",
@@ -632,10 +707,3 @@ def render(tab):
                     _rerun_keep_tab()
                 except Exception as e:
                     st.error(f"등록 실패: {e}")
-
-        st.divider()
-        if st.button("📋 조회", key="budget_btn_list"):
-            st.session_state.budget_view = "list"
-            if "budget_selected_reg_no" in st.session_state:
-                del st.session_state["budget_selected_reg_no"]
-            _rerun_keep_tab()

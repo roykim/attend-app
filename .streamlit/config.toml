@@ -1,0 +1,3 @@
+# 위젯 기본값 + Session State 병기 시 나오는 경고 메시지 숨김
+[global]
+disableWidgetStateDuplicationWarning = true
