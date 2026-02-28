@@ -15,9 +15,11 @@ from photo_utils import image_to_base64_for_sheet, resize_photo_to_final
 from sheets import (
     ensure_students_extra_columns,
     ensure_students_photo_column,
+    get_class_data,
     get_students_data,
     get_students_ws,
 )
+from tabs.utils import class_display_label
 
 
 def _clear_class_edit_state():
@@ -66,7 +68,26 @@ def render(tab):
         selected_grade_class = st.selectbox("학년", grades_class, key="class_info_grade")
         filtered_for_class = students_data[students_data["학년"] == selected_grade_class]
         classes_list = sorted(filtered_for_class["반"].dropna().unique().tolist(), key=str)
-        selected_class_only = st.selectbox("반", classes_list, key="class_info_class")
+        try:
+            class_data = get_class_data()
+        except Exception:
+            class_data = pd.DataFrame()
+        class_data_for_grade = (
+            class_data[(class_data["학년"].astype(str) == str(selected_grade_class))]
+            if (class_data is not None and not class_data.empty)
+            else pd.DataFrame()
+        )
+        class_options = [
+            class_display_label(c, selected_grade_class, class_data_for_grade if not class_data_for_grade.empty else None)
+            for c in classes_list
+        ]
+        selected_class_idx = st.selectbox(
+            "반",
+            range(len(classes_list)),
+            format_func=lambda i: class_options[i],
+            key=f"class_info_class_{selected_grade_class}",
+        )
+        selected_class_only = classes_list[min(selected_class_idx, len(classes_list) - 1)] if classes_list else None
 
         df_all = pd.DataFrame(class_all_records)
         df_all["_sheet_row"] = list(range(2, 2 + len(class_all_records)))  # 시트 행 번호 (헤더=1)

@@ -7,18 +7,40 @@ from datetime import date
 import pandas as pd
 import streamlit as st
 
-from sheets import get_attendance_data, get_students_data
+from sheets import get_attendance_data, get_class_data, get_students_data
+from tabs.utils import class_display_label
 
 
 def render(tab):
     students_data = get_students_data()
+    try:
+        class_data = get_class_data()
+    except Exception:
+        class_data = pd.DataFrame()
+
     with tab:
         st.title("📌 개별 출석 확인")
         grades_t3 = sorted(students_data["학년"].dropna().unique().tolist(), key=str)
         selected_grade_t3 = st.selectbox("학년 선택", grades_t3, key="indiv_grade")
         filtered_t3 = students_data[students_data["학년"] == selected_grade_t3]
         classes_t3 = sorted(filtered_t3["반"].dropna().unique().tolist(), key=str)
-        selected_class_t3 = st.selectbox("반 선택", classes_t3, key="indiv_class")
+        # 선택한 학년에 해당하는 class 시트 행만 넘겨서, 학년 변경 시 반별 교사/부교사가 갱신되도록 함
+        class_data_for_grade = (
+            class_data[(class_data["학년"].astype(str) == str(selected_grade_t3))]
+            if (class_data is not None and not class_data.empty)
+            else pd.DataFrame()
+        )
+        class_options = [
+            class_display_label(c, selected_grade_t3, class_data_for_grade if not class_data_for_grade.empty else None)
+            for c in classes_t3
+        ]
+        selected_idx = st.selectbox(
+            "반 선택",
+            range(len(classes_t3)),
+            format_func=lambda i: class_options[i],
+            key=f"indiv_class_{selected_grade_t3}",  # 학년 변경 시 반 선택 위젯 갱신
+        )
+        selected_class_t3 = classes_t3[min(selected_idx, len(classes_t3) - 1)] if classes_t3 else None
         class_students_t3 = filtered_t3[filtered_t3["반"] == selected_class_t3]
         student_names = class_students_t3["이름"].tolist()
 

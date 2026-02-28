@@ -98,6 +98,17 @@ def get_new_believers_data():
     return get_new_believers_ws().get_all_records()
 
 
+@st.cache_data(ttl=300)
+def get_class_data():
+    """반 정보(class) 시트 데이터 캐시 (5분). 담당선생님, 부교사 등. 시트 없으면 빈 DataFrame."""
+    try:
+        sheet = get_sheet()
+        ws = sheet.worksheet("class")
+        return pd.DataFrame(ws.get_all_records())
+    except gspread.exceptions.WorksheetNotFound:
+        return pd.DataFrame()
+
+
 def invalidate_sheets_cache():
     """시트에 쓰기 후 캐시 무효화. 저장/수정 직후 호출."""
     st.cache_data.clear()

@@ -6,7 +6,8 @@ from datetime import date, timedelta
 import pandas as pd
 import streamlit as st
 
-from sheets import get_attendance_data, get_attendance_ws, get_students_data, invalidate_sheets_cache
+from sheets import get_attendance_data, get_attendance_ws, get_class_data, get_students_data, invalidate_sheets_cache
+from tabs.utils import class_display_label
 
 
 def _last_sunday(t: date) -> date:
@@ -42,7 +43,26 @@ def render(tab):
         selected_grade = st.selectbox("학년 선택", grades, key="grade_select")
         filtered_class = students_data[students_data["학년"] == selected_grade]
         classes = sorted(filtered_class["반"].dropna().unique().tolist(), key=str)
-        selected_class = st.selectbox("반 선택", classes, key="class_select")
+        try:
+            class_data = get_class_data()
+        except Exception:
+            class_data = pd.DataFrame()
+        class_data_for_grade = (
+            class_data[(class_data["학년"].astype(str) == str(selected_grade))]
+            if (class_data is not None and not class_data.empty)
+            else pd.DataFrame()
+        )
+        class_options = [
+            class_display_label(c, selected_grade, class_data_for_grade if not class_data_for_grade.empty else None)
+            for c in classes
+        ]
+        selected_idx = st.selectbox(
+            "반 선택",
+            range(len(classes)),
+            format_func=lambda i: class_options[i],
+            key=f"class_select_{selected_grade}",
+        )
+        selected_class = classes[min(selected_idx, len(classes) - 1)] if classes else None
         class_students = filtered_class[filtered_class["반"] == selected_class]
 
         date_str = selected_date.strftime("%Y-%m-%d")
