@@ -51,7 +51,9 @@ def render(tab):
         df_att = df_att[df_att["주일_기준"].apply(lambda p: p.end_time.date() <= today)]
 
         st.subheader("1. 전체 출석자 (주일)")
-        weekly_total = df_att.groupby("주일_기준").size().reset_index(name="출석인원")
+        # 같은 주에 동일 인원이 여러 번 세어지지 않도록 (이름, 학년, 반) 기준 중복 제거 후 집계
+        df_att_unique = df_att.drop_duplicates(subset=["주일_기준", "이름", "학년", "반"])
+        weekly_total = df_att_unique.groupby("주일_기준").size().reset_index(name="출석인원")
         weekly_total["주일"] = weekly_total["주일_기준"].apply(lambda p: p.end_time.strftime("%m/%d"))
         weekly_total = weekly_total.sort_values("주일_기준")
         if weekly_total.empty:
@@ -70,7 +72,8 @@ def render(tab):
             st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False})
 
         st.subheader("2. 학년별 출석 (주일)")
-        weekly_by_grade = df_att.groupby(["주일_기준", "학년"]).size().reset_index(name="출석인원")
+        # 학년별 주당 출석 인원 = 같은 주·같은 학년에서 동일 학생 1명으로만 집계
+        weekly_by_grade = df_att.groupby(["주일_기준", "학년"])["이름"].nunique().reset_index(name="출석인원")
         weekly_by_grade["주일"] = weekly_by_grade["주일_기준"].apply(lambda p: p.end_time.strftime("%m/%d"))
         weekly_by_grade = weekly_by_grade.sort_values(["주일_기준", "학년"])
         if weekly_by_grade.empty:
@@ -93,7 +96,8 @@ def render(tab):
         grades_list = sorted(df_att["학년"].dropna().unique().tolist(), key=str)
         for grade in grades_list:
             grade_df = df_att[df_att["학년"] == grade]
-            weekly_by_class = grade_df.groupby(["주일_기준", "반"]).size().reset_index(name="출석인원")
+            # 반별 주당 출석 인원 = 같은 주·같은 반에서 동일 학생 1명으로만 집계
+            weekly_by_class = grade_df.groupby(["주일_기준", "반"])["이름"].nunique().reset_index(name="출석인원")
             weekly_by_class["주일"] = weekly_by_class["주일_기준"].apply(lambda p: p.end_time.strftime("%m/%d"))
             weekly_by_class = weekly_by_class.sort_values(["주일_기준", "반"])
             if weekly_by_class.empty:
