@@ -58,11 +58,13 @@ def render(tab):
             st.caption("표시할 주일별 데이터가 없습니다.")
         else:
             max1 = weekly_total["출석인원"].max()
+            x_categories = weekly_total["주일"].unique().tolist()
             fig1 = px.line(weekly_total, x="주일", y="출석인원", markers=True)
             fig1.update_traces(hovertemplate="주일: %{x}<br>출석인원: %{y:.0f}명<extra></extra>")
             fig1.update_layout(
                 xaxis_tickangle=-45, margin=dict(b=80), xaxis_title="", yaxis_title="출석인원",
                 yaxis=dict(dtick=_y_dtick(max1), tickformat=".0f"),
+                xaxis=dict(categoryorder="array", categoryarray=x_categories),
                 dragmode=False,
             )
             st.plotly_chart(fig1, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False})
@@ -75,11 +77,14 @@ def render(tab):
             st.caption("표시할 학년별 데이터가 없습니다.")
         else:
             max2 = weekly_by_grade["출석인원"].max()
+            # x축 날짜 순서 고정: 주일_기준 정렬 순서대로 유지
+            x_categories = weekly_by_grade["주일"].unique().tolist()
             fig2 = px.line(weekly_by_grade, x="주일", y="출석인원", color="학년", markers=True)
             fig2.update_traces(hovertemplate="주일: %{x}<br>학년: %{fullData.name}<br>출석인원: %{y:.0f}명<extra></extra>")
             fig2.update_layout(
                 xaxis_tickangle=-45, margin=dict(b=80), xaxis_title="", yaxis_title="출석인원", legend_title="학년",
                 yaxis=dict(dtick=_y_dtick(max2), tickformat=".0f"),
+                xaxis=dict(categoryorder="array", categoryarray=x_categories),
                 dragmode=False,
             )
             st.plotly_chart(fig2, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False})
@@ -95,6 +100,7 @@ def render(tab):
                 st.caption(f"{grade}학년 — 데이터 없음")
                 continue
             max_cls = weekly_by_class["출석인원"].max() if not weekly_by_class.empty else 0
+            x_categories_cls = weekly_by_class["주일"].unique().tolist()
             fig = px.line(weekly_by_class, x="주일", y="출석인원", color="반", markers=True)
             fig.update_traces(hovertemplate="주일: %{x}<br>반: %{fullData.name}<br>출석인원: %{y:.0f}명<extra></extra>")
             fig.update_layout(
@@ -102,6 +108,7 @@ def render(tab):
                 xaxis_tickangle=-45, xaxis_title="", yaxis_title="출석인원",
                 margin=dict(b=80, t=40), legend_title="반",
                 yaxis=dict(dtick=_y_dtick(max_cls), tickformat=".0f"),
+                xaxis=dict(categoryorder="array", categoryarray=x_categories_cls),
                 dragmode=False,
             )
             st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False})
@@ -130,11 +137,13 @@ def render(tab):
                         st.caption("표시할 주일별 새신자 데이터가 없습니다.")
                     else:
                         max_nb = weekly_nb["새신자 등록"].max()
+                        x_categories_nb = weekly_nb["주일"].unique().tolist()
                         fig_nb = px.line(weekly_nb, x="주일", y="새신자 등록", markers=True)
                         fig_nb.update_traces(hovertemplate="주일: %{x}<br>새신자 등록: %{y:.0f}명<extra></extra>")
                         fig_nb.update_layout(
                             xaxis_tickangle=-45, margin=dict(b=80), xaxis_title="", yaxis_title="새신자 등록(명)",
                             yaxis=dict(dtick=_y_dtick(max_nb), tickformat=".0f"),
+                            xaxis=dict(categoryorder="array", categoryarray=x_categories_nb),
                             dragmode=False,
                         )
                         st.plotly_chart(fig_nb, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False})
