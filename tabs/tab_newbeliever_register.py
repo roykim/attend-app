@@ -12,6 +12,7 @@ from streamlit_cropper import st_cropper
 
 from config import PHOTO_HEIGHT, PHOTO_WIDTH
 from photo_utils import image_to_base64_for_sheet, resize_photo_to_final
+from tabs.utils import natural_sort_key
 from sheets import (
     ensure_students_photo_column,
     get_new_believers_ws,
@@ -23,12 +24,12 @@ from sheets import (
 
 def render(tab):
     students_data = get_students_data()
-    new_grade_list = sorted(students_data["학년"].dropna().unique().tolist(), key=str)
+    new_grade_list = sorted(students_data["학년"].dropna().unique().tolist(), key=natural_sort_key)
     grade_options = ["(미배정)"] + [str(x) for x in new_grade_list]
     new_class_options_by_grade = {}
     for g in new_grade_list:
         fc = students_data[students_data["학년"] == g]
-        new_class_options_by_grade[str(g)] = ["(미배정)"] + [str(x) for x in sorted(fc["반"].dropna().unique().tolist(), key=str)]
+        new_class_options_by_grade[str(g)] = ["(미배정)"] + [str(x) for x in sorted(fc["반"].dropna().unique().tolist(), key=natural_sort_key)]
 
     with tab:
         st.title("✝️ 새신자 등록")

@@ -12,6 +12,7 @@ from streamlit_cropper import st_cropper
 
 import auth
 from config import PHOTO_B64_MAX
+from tabs.utils import natural_sort_key
 from photo_utils import image_to_base64_for_sheet
 from sheets import (
     get_budget_request_ws,
@@ -557,7 +558,7 @@ def render(tab):
         if group_type == "학년/반":
             try:
                 students_data = get_students_data()
-                grade_list = sorted(students_data["학년"].dropna().unique().tolist(), key=str)
+                grade_list = sorted(students_data["학년"].dropna().unique().tolist(), key=natural_sort_key)
                 grade_options = [str(g) for g in grade_list]
                 if not grade_options:
                     st.caption("학년/반 데이터가 없습니다.")
@@ -565,7 +566,7 @@ def render(tab):
                     sel_grade_idx = st.selectbox("학년", range(len(grade_options)), format_func=lambda i: grade_options[i], key="budget_grade")
                     selected_grade = grade_options[sel_grade_idx]
                     filtered = students_data[students_data["학년"].astype(str) == str(selected_grade)]
-                    class_list = sorted(filtered["반"].dropna().unique().tolist(), key=str)
+                    class_list = sorted(filtered["반"].dropna().unique().tolist(), key=natural_sort_key)
                     class_options = [str(c) for c in class_list]
                     if not class_options:
                         group_name_value = f"{selected_grade}학년"

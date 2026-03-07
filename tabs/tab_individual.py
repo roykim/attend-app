@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 from sheets import get_attendance_data, get_class_data, get_students_data
-from tabs.utils import class_display_label
+from tabs.utils import class_display_label, natural_sort_key
 
 
 def render(tab):
@@ -20,10 +20,10 @@ def render(tab):
 
     with tab:
         st.title("📌 개별 출석 확인")
-        grades_t3 = sorted(students_data["학년"].dropna().unique().tolist(), key=str)
+        grades_t3 = sorted(students_data["학년"].dropna().unique().tolist(), key=natural_sort_key)
         selected_grade_t3 = st.selectbox("학년 선택", grades_t3, key="indiv_grade")
         filtered_t3 = students_data[students_data["학년"] == selected_grade_t3]
-        classes_t3 = sorted(filtered_t3["반"].dropna().unique().tolist(), key=str)
+        classes_t3 = sorted(filtered_t3["반"].dropna().unique().tolist(), key=natural_sort_key)
         # 선택한 학년에 해당하는 class 시트 행만 넘겨서, 학년 변경 시 반별 교사/부교사가 갱신되도록 함
         class_data_for_grade = (
             class_data[(class_data["학년"].astype(str) == str(selected_grade_t3))]

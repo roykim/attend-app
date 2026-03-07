@@ -4,6 +4,14 @@
 import pandas as pd
 
 
+def natural_sort_key(x):
+    """반/학년 등 숫자 문자열을 1, 2, …, 10 순으로 정렬하기 위한 키. 문자열이면 1,10,2,… 대신 1,2,…,10 순."""
+    try:
+        return (0, int(x))
+    except (ValueError, TypeError):
+        return (1, str(x) if x is not None else "")
+
+
 def class_display_label(class_name: str, grade: str, class_df: pd.DataFrame | None) -> str:
     """반 이름 옆에 교사·부교사가 있으면 괄호로 표시.
 

@@ -19,7 +19,7 @@ from sheets import (
     get_students_data,
     get_students_ws,
 )
-from tabs.utils import class_display_label
+from tabs.utils import class_display_label, natural_sort_key
 
 
 def _clear_class_edit_state():
@@ -64,10 +64,10 @@ def render(tab):
 
     with tab:
         st.title("📂 반정보")
-        grades_class = sorted(students_data["학년"].dropna().unique().tolist(), key=str)
+        grades_class = sorted(students_data["학년"].dropna().unique().tolist(), key=natural_sort_key)
         selected_grade_class = st.selectbox("학년", grades_class, key="class_info_grade")
         filtered_for_class = students_data[students_data["학년"] == selected_grade_class]
-        classes_list = sorted(filtered_for_class["반"].dropna().unique().tolist(), key=str)
+        classes_list = sorted(filtered_for_class["반"].dropna().unique().tolist(), key=natural_sort_key)
         try:
             class_data = get_class_data()
         except Exception:
@@ -184,7 +184,7 @@ def render(tab):
             except StopIteration:
                 idx_grade = 0
             e_grade_c = st.selectbox("학년", grades_class, index=idx_grade, key="class_edit_grade")
-            e_class_list_c = sorted(students_data[students_data["학년"].astype(str) == str(e_grade_c)]["반"].dropna().astype(str).unique().tolist(), key=str)
+            e_class_list_c = sorted(students_data[students_data["학년"].astype(str) == str(e_grade_c)]["반"].dropna().astype(str).unique().tolist(), key=natural_sort_key)
             edit_class_val = str(edit_data_c.get("반") or "").strip()
             try:
                 e_class_idx_c = next(i for i, c in enumerate(e_class_list_c) if str(c).strip() == edit_class_val)

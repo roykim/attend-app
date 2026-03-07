@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from sheets import get_attendance_data, get_attendance_ws, get_class_data, get_students_data, invalidate_sheets_cache
-from tabs.utils import class_display_label
+from tabs.utils import class_display_label, natural_sort_key
 
 
 def _last_sunday(t: date) -> date:
@@ -39,10 +39,10 @@ def render(tab):
             key="date_input",
         )
         selected_date = sundays[sel_label]
-        grades = sorted(students_data["학년"].dropna().unique().tolist(), key=str)
+        grades = sorted(students_data["학년"].dropna().unique().tolist(), key=natural_sort_key)
         selected_grade = st.selectbox("학년 선택", grades, key="grade_select")
         filtered_class = students_data[students_data["학년"] == selected_grade]
-        classes = sorted(filtered_class["반"].dropna().unique().tolist(), key=str)
+        classes = sorted(filtered_class["반"].dropna().unique().tolist(), key=natural_sort_key)
         try:
             class_data = get_class_data()
         except Exception:

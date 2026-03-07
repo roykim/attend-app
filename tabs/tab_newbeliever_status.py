@@ -10,6 +10,7 @@ import streamlit as st
 
 from config import PHOTO_WIDTH
 from photo_utils import image_to_base64_for_sheet
+from tabs.utils import natural_sort_key
 from sheets import (
     ensure_students_photo_column,
     get_new_believers_data,
@@ -40,12 +41,12 @@ def render(tab):
         st.warning("새신자 데이터를 불러올 수 없습니다.")
         st.stop()
 
-    nb_grade_list = sorted(students_data["학년"].dropna().unique().tolist(), key=str)
+    nb_grade_list = sorted(students_data["학년"].dropna().unique().tolist(), key=natural_sort_key)
     nb_grade_options = ["(미배정)"] + [str(x) for x in nb_grade_list]
     nb_class_options_by_grade = {}
     for g in nb_grade_list:
         fc = students_data[students_data["학년"] == g]
-        nb_class_options_by_grade[str(g)] = ["(미배정)"] + [str(x) for x in sorted(fc["반"].dropna().unique().tolist(), key=str)]
+        nb_class_options_by_grade[str(g)] = ["(미배정)"] + [str(x) for x in sorted(fc["반"].dropna().unique().tolist(), key=natural_sort_key)]
 
     with tab:
         st.title("📋 새신자 현황")
