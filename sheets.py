@@ -164,7 +164,7 @@ def get_last_tab_index(fingerprint_hash: str | None) -> int | None:
         return None
     try:
         ws = _get_user_prefs_worksheet()
-        rows = ws.get_all_values()
+        rows = _ensure_rows_list(ws.get_all_values())
         if not rows or len(rows) < 2:
             return None
         fp = str(fingerprint_hash).strip()
@@ -187,14 +187,13 @@ def get_last_grade_class(fingerprint_hash: str | None) -> tuple[str | None, str 
         ws = _get_user_prefs_worksheet()
         # A2:D 범위 + pad 로 C,D열이 항상 포함되도록 (used range만 쓰면 2열만 반환될 수 있음)
         try:
-            rows = ws.get_all_values("A2:D500", pad_values=True)
+            raw = ws.get_all_values("A2:D500", pad_values=True)
+            rows = _ensure_rows_list(raw)
         except (TypeError, Exception):
             # 구버전 gspread: 범위 없이 읽은 뒤 4열로 패딩
             raw = ws.get_all_values()
-            rows = []
-            for r in (raw[1:] if len(raw) > 1 else []):
-                r = list(r) if isinstance(r, (list, tuple)) else [r]
-                rows.append((r + ["", "", "", ""])[:4])
+            rows = _ensure_rows_list(raw)
+            rows = [((list(r) if isinstance(r, (list, tuple)) else [r]) + ["", "", "", ""])[:4] for r in (rows[1:] if len(rows) > 1 else [])]
         if not rows or len(rows) < 1:
             return None, None
         fp = str(fingerprint_hash).strip()
@@ -217,13 +216,12 @@ def set_last_grade_class(fingerprint_hash: str | None, grade: str | None, class_
     try:
         ws = _get_user_prefs_worksheet()
         try:
-            rows = ws.get_all_values("A2:D500", pad_values=True)
+            raw = ws.get_all_values("A2:D500", pad_values=True)
+            rows = _ensure_rows_list(raw)
         except (TypeError, Exception):
             raw = ws.get_all_values()
-            rows = []
-            for r in (raw[1:] if len(raw) > 1 else []):
-                r = list(r) if isinstance(r, (list, tuple)) else [r]
-                rows.append((r + ["", "", "", ""])[:4])
+            rows = _ensure_rows_list(raw)
+            rows = [((list(r) if isinstance(r, (list, tuple)) else [r]) + ["", "", "", ""])[:4] for r in (rows[1:] if len(rows) > 1 else [])]
         fp = str(fingerprint_hash).strip()
         g = (str(grade).strip() if grade is not None else "") or ""
         c = (str(class_val).strip() if class_val is not None else "") or ""
@@ -250,7 +248,7 @@ def set_last_tab_index(fingerprint_hash: str | None, index: int):
         return
     try:
         ws = _get_user_prefs_worksheet()
-        rows = ws.get_all_values()
+        rows = _ensure_rows_list(ws.get_all_values())
         fp = str(fingerprint_hash).strip()
         for i in range(1, len(rows)):
             if len(rows[i]) >= 1 and str(rows[i][0]).strip() == fp:

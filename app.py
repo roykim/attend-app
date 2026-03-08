@@ -76,14 +76,20 @@ if "app_tab_index" not in st.session_state:
     else:
         # 2) 이 단말에서 마지막으로 보던 탭 복원
         fp = auth.get_fingerprint_hash()
-        last_idx = sheets.get_last_tab_index(fp)
+        try:
+            last_idx = sheets.get_last_tab_index(fp)
+        except Exception:
+            last_idx = None
         if last_idx is not None and 0 <= last_idx < len(TAB_LABELS):
             st.session_state.app_tab_index = last_idx
         else:
             st.session_state.app_tab_index = 0
     # 마지막으로 선택했던 학년·반은 URL 여부와 관계없이 항상 시트에서 복원
     fp = auth.get_fingerprint_hash()
-    last_grade, last_class = sheets.get_last_grade_class(fp)
+    try:
+        last_grade, last_class = sheets.get_last_grade_class(fp)
+    except Exception:
+        last_grade, last_class = None, None
     if last_grade:
         st.session_state["app_last_grade"] = last_grade
     if last_class:
