@@ -18,6 +18,35 @@ def init(client, spreadsheet_name: str = None):
     _spreadsheet_name = spreadsheet_name or SPREADSHEET_NAME
 
 
+# ------------------------
+# 시트 연결 (세션 캐시)
+# ------------------------
+def _is_retryable_api_error(e):
+    """429(한도) 또는 5xx(서버 오류)면 재시도 대상."""
+    if not isinstance(e, gspread.exceptions.APIError):
+        return False
+    resp = getattr(e, "response", None)
+    code = getattr(resp, "status_code", None) if resp else None
+    return code == 429 or (isinstance(code, int) and 500 <= code < 600)
+
+
+def _retry_sheet_call(fn, max_attempts=3, sleep_sec=6):
+    """시트 API 호출을 일시 오류 시 재시도."""
+    last_err = None
+    for attempt in range(max_attempts):
+        try:
+            return fn()
+        except gspread.exceptions.APIError as e:
+            last_err = e
+            if _is_retryable_api_error(e) and attempt < max_attempts - 1:
+                time.sleep(sleep_sec)
+                continue
+            raise
+    if last_err is not None:
+        raise last_err
+    return None
+
+
 def get_sheet():
     """세션당 한 번만 시트를 열어 반환. 429 시 잠시 대기 후 1회 재시도."""
     if "sheet" not in st.session_state:
@@ -81,21 +110,29 @@ def get_budget_sheet():
 
 @st.cache_data(ttl=300)
 def get_students_data():
-    """학생 시트 데이터 캐시 (5분). API 읽기 한도 절약."""
+    """학생 시트 데이터 캐시 (5분). API 읽기 한도 절약. 일시 오류 시 재시도."""
     sheet = get_sheet()
-    return pd.DataFrame(sheet.worksheet("students").get_all_records())
+
+    def _fetch():
+        return pd.DataFrame(sheet.worksheet("students").get_all_records())
+
+    return _retry_sheet_call(_fetch)
 
 
 @st.cache_data(ttl=300)
 def get_attendance_data():
-    """출석 시트 데이터 캐시 (5분). API 읽기 한도 절약."""
-    return pd.DataFrame(get_attendance_ws().get_all_records())
+    """출석 시트 데이터 캐시 (5분). API 읽기 한도 절약. 일시 오류 시 재시도."""
+    def _fetch():
+        return pd.DataFrame(get_attendance_ws().get_all_records())
+    return _retry_sheet_call(_fetch)
 
 
 @st.cache_data(ttl=300)
 def get_new_believers_data():
-    """새신자 시트 데이터 캐시 (5분)."""
-    return get_new_believers_ws().get_all_records()
+    """새신자 시트 데이터 캐시 (5분). 일시 오류 시 재시도."""
+    def _fetch():
+        return get_new_believers_ws().get_all_records()
+    return _retry_sheet_call(_fetch)
 
 
 def is_duplicate_new_believer(reg_date, name):
@@ -118,11 +155,15 @@ def is_duplicate_new_believer(reg_date, name):
 
 @st.cache_data(ttl=300)
 def get_class_data():
-    """반 정보(class) 시트 데이터 캐시 (5분). 담당선생님, 부교사 등. 시트 없으면 빈 DataFrame."""
+    """반 정보(class) 시트 데이터 캐시 (5분). 담당선생님, 부교사 등. 시트 없으면 빈 DataFrame. 일시 오류 시 재시도."""
     try:
         sheet = get_sheet()
-        ws = sheet.worksheet("class")
-        return pd.DataFrame(ws.get_all_records())
+
+        def _fetch():
+            ws = sheet.worksheet("class")
+            return pd.DataFrame(ws.get_all_records())
+
+        return _retry_sheet_call(_fetch)
     except gspread.exceptions.WorksheetNotFound:
         return pd.DataFrame()
 

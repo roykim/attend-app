@@ -24,7 +24,15 @@ def _sunday_options(count: int = 52) -> list[date]:
 
 
 def render(tab):
-    students_data = get_students_data()
+    try:
+        students_data = get_students_data()
+    except Exception:
+        with tab:
+            st.error("구글 시트에서 학생 데이터를 불러오는 중 일시 오류가 났습니다. 잠시 후 다시 시도해 주세요.")
+            if st.button("🔄 다시 시도", key="att_retry_students"):
+                get_students_data.clear()
+                st.rerun()
+        return
     sundays = _sunday_options()
     default_index = 0  # 가장 가까운 지난 주일(일요일)
 
