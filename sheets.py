@@ -98,6 +98,24 @@ def get_new_believers_data():
     return get_new_believers_ws().get_all_records()
 
 
+def is_duplicate_new_believer(reg_date, name):
+    """등록일+이름이 동일한 새신자가 이미 있으면 True. 중복 등록 방지용."""
+    if not (name and str(name).strip()):
+        return False
+    records = get_new_believers_data()
+    reg_str = reg_date.strftime("%Y-%m-%d") if hasattr(reg_date, "strftime") else str(reg_date)[:10]
+    name_clean = str(name).strip()
+    for r in records:
+        r_date = r.get("등록일") or ""
+        if hasattr(r_date, "strftime"):
+            r_date = r_date.strftime("%Y-%m-%d")
+        else:
+            r_date = str(r_date)[:10]
+        if r_date == reg_str and (r.get("이름") or "").strip() == name_clean:
+            return True
+    return False
+
+
 @st.cache_data(ttl=300)
 def get_class_data():
     """반 정보(class) 시트 데이터 캐시 (5분). 담당선생님, 부교사 등. 시트 없으면 빈 DataFrame."""
@@ -126,6 +144,121 @@ def get_students_ws():
     if "students_ws" not in st.session_state:
         st.session_state.students_ws = get_sheet().worksheet("students")
     return st.session_state.students_ws
+
+
+def _get_user_prefs_worksheet():
+    """'user_prefs' 시트 반환 (단말별 마지막 탭·학년·반). 없으면 생성."""
+    sheet = get_sheet()
+    try:
+        return sheet.worksheet("user_prefs")
+    except gspread.exceptions.WorksheetNotFound:
+        sheet.add_worksheet(title="user_prefs", rows=2, cols=4)
+        ws = sheet.worksheet("user_prefs")
+        ws.update("A1:D1", [["fingerprint_hash", "last_tab_index", "last_grade", "last_class"]])
+        return ws
+
+
+def get_last_tab_index(fingerprint_hash: str | None) -> int | None:
+    """단말 fingerprint에 해당하는 마지막 탭 인덱스. 없거나 유효하지 않으면 None."""
+    if not fingerprint_hash or not str(fingerprint_hash).strip():
+        return None
+    try:
+        ws = _get_user_prefs_worksheet()
+        rows = ws.get_all_values()
+        if not rows or len(rows) < 2:
+            return None
+        fp = str(fingerprint_hash).strip()
+        for row in rows[1:]:
+            if len(row) >= 2 and str(row[0]).strip() == fp:
+                try:
+                    return int(row[1])
+                except (ValueError, TypeError):
+                    return None
+        return None
+    except Exception:
+        return None
+
+
+def get_last_grade_class(fingerprint_hash: str | None) -> tuple[str | None, str | None]:
+    """단말 fingerprint에 해당하는 마지막 학년·반. (last_grade, last_class). 없으면 (None, None)."""
+    if not fingerprint_hash or not str(fingerprint_hash).strip():
+        return None, None
+    try:
+        ws = _get_user_prefs_worksheet()
+        # A2:D 범위 + pad 로 C,D열이 항상 포함되도록 (used range만 쓰면 2열만 반환될 수 있음)
+        try:
+            rows = ws.get_all_values("A2:D500", pad_values=True)
+        except (TypeError, Exception):
+            # 구버전 gspread: 범위 없이 읽은 뒤 4열로 패딩
+            raw = ws.get_all_values()
+            rows = []
+            for r in (raw[1:] if len(raw) > 1 else []):
+                r = list(r) if isinstance(r, (list, tuple)) else [r]
+                rows.append((r + ["", "", "", ""])[:4])
+        if not rows or len(rows) < 1:
+            return None, None
+        fp = str(fingerprint_hash).strip()
+        for row in rows:
+            row = list(row) if isinstance(row, (list, tuple)) else [row]
+            row = (row + ["", "", "", ""])[:4]
+            if len(row) >= 1 and str(row[0]).strip() == fp:
+                grade = (str(row[2]).strip() if len(row) > 2 and row[2] not in (None, "") else None) or None
+                cls = (str(row[3]).strip() if len(row) > 3 and row[3] not in (None, "") else None) or None
+                return grade, cls
+        return None, None
+    except Exception:
+        return None, None
+
+
+def set_last_grade_class(fingerprint_hash: str | None, grade: str | None, class_val: str | None):
+    """단말 fingerprint에 대해 마지막 학년·반 저장. A~D열을 한 번에 써서 C,D가 반드시 반영되도록 함."""
+    if fingerprint_hash is None or not str(fingerprint_hash).strip():
+        return
+    try:
+        ws = _get_user_prefs_worksheet()
+        try:
+            rows = ws.get_all_values("A2:D500", pad_values=True)
+        except (TypeError, Exception):
+            raw = ws.get_all_values()
+            rows = []
+            for r in (raw[1:] if len(raw) > 1 else []):
+                r = list(r) if isinstance(r, (list, tuple)) else [r]
+                rows.append((r + ["", "", "", ""])[:4])
+        fp = str(fingerprint_hash).strip()
+        g = (str(grade).strip() if grade is not None else "") or ""
+        c = (str(class_val).strip() if class_val is not None else "") or ""
+        if rows:
+            for i, row in enumerate(rows):
+                row = list(row) if isinstance(row, (list, tuple)) else [row]
+                row = (row + ["", "", "", ""])[:4]
+                if len(row) >= 1 and str(row[0]).strip() == fp:
+                    tab_idx = row[1] if len(row) > 1 and row[1] not in (None, "") else 0
+                    try:
+                        tab_idx = int(tab_idx)
+                    except (ValueError, TypeError):
+                        tab_idx = 0
+                    ws.update(f"A{i+2}:D{i+2}", [[fp, tab_idx, g, c]])
+                    return
+        ws.append_row([fp, 0, g, c])
+    except Exception:
+        pass
+
+
+def set_last_tab_index(fingerprint_hash: str | None, index: int):
+    """단말 fingerprint에 대해 마지막 탭 인덱스 저장."""
+    if fingerprint_hash is None or not str(fingerprint_hash).strip():
+        return
+    try:
+        ws = _get_user_prefs_worksheet()
+        rows = ws.get_all_values()
+        fp = str(fingerprint_hash).strip()
+        for i in range(1, len(rows)):
+            if len(rows[i]) >= 1 and str(rows[i][0]).strip() == fp:
+                ws.update_cell(i + 1, 2, index)
+                return
+        ws.append_row([fp, index, "", ""])
+    except Exception:
+        pass
 
 
 def _ensured_key(ws_name: str, suffix: str) -> str:

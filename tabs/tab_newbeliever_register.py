@@ -19,6 +19,7 @@ from sheets import (
     get_students_data,
     get_students_ws,
     invalidate_sheets_cache,
+    is_duplicate_new_believer,
 )
 
 
@@ -85,6 +86,8 @@ def render(tab):
         if st.button("새신자 등록"):
             if not (new_name and new_name.strip()):
                 st.error("이름을 입력해 주세요.")
+            elif is_duplicate_new_believer(reg_date, new_name):
+                st.warning("같은 등록일·이름의 새신자가 이미 등록되어 있습니다. 중복 등록되지 않았는지 새신자 현황에서 확인해 주세요.")
             else:
                 try:
                     photo_b64 = ""

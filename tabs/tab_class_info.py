@@ -19,7 +19,7 @@ from sheets import (
     get_students_data,
     get_students_ws,
 )
-from tabs.utils import class_display_label, natural_sort_key
+from tabs.utils import class_display_label, get_restored_class_index, get_restored_grade_index, natural_sort_key, save_grade_class_for_restore
 
 
 def _clear_class_edit_state():
@@ -65,7 +65,8 @@ def render(tab):
     with tab:
         st.title("📂 반정보")
         grades_class = sorted(students_data["학년"].dropna().unique().tolist(), key=natural_sort_key)
-        selected_grade_class = st.selectbox("학년", grades_class, key="class_info_grade")
+        default_grade_idx_c = get_restored_grade_index(grades_class)
+        selected_grade_class = st.selectbox("학년", grades_class, key="class_info_grade", index=default_grade_idx_c)
         filtered_for_class = students_data[students_data["학년"] == selected_grade_class]
         classes_list = sorted(filtered_for_class["반"].dropna().unique().tolist(), key=natural_sort_key)
         try:
@@ -81,13 +82,16 @@ def render(tab):
             class_display_label(c, selected_grade_class, class_data_for_grade if not class_data_for_grade.empty else None)
             for c in classes_list
         ]
+        default_class_idx_c = get_restored_class_index(classes_list)
         selected_class_idx = st.selectbox(
             "반",
             range(len(classes_list)),
             format_func=lambda i: class_options[i],
             key=f"class_info_class_{selected_grade_class}",
+            index=default_class_idx_c,
         )
         selected_class_only = classes_list[min(selected_class_idx, len(classes_list) - 1)] if classes_list else None
+        save_grade_class_for_restore(selected_grade_class, selected_class_only)
 
         df_all = pd.DataFrame(class_all_records)
         df_all["_sheet_row"] = list(range(2, 2 + len(class_all_records)))  # 시트 행 번호 (헤더=1)

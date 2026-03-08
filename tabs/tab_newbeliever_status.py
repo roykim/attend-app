@@ -18,6 +18,7 @@ from sheets import (
     get_students_data,
     get_students_ws,
     invalidate_sheets_cache,
+    is_duplicate_new_believer,
 )
 
 
@@ -67,6 +68,8 @@ def render(tab):
             if st.button("등록하기", key="nb_add_submit"):
                 if not (add_name and add_name.strip()):
                     st.error("이름을 입력해 주세요.")
+                elif is_duplicate_new_believer(add_reg_date, add_name):
+                    st.warning("같은 등록일·이름의 새신자가 이미 등록되어 있습니다. 중복 등록되지 않았는지 아래 목록에서 확인해 주세요.")
                 else:
                     try:
                         photo_b64 = ""
@@ -130,7 +133,7 @@ def render(tab):
                 e_class_idx = 0
             e_sel_class_idx = st.selectbox("반", range(len(e_class_list)), index=min(e_class_idx, len(e_class_list) - 1), format_func=lambda i: str(e_class_list[i]), key="nb_edit_class")
             e_selected_class = None if not e_class_list or e_class_list[e_sel_class_idx] == "(미배정)" else e_class_list[e_sel_class_idx]
-            col_save, col_cancel = st.columns(2)
+            col_save, col_cancel, col_delete = st.columns(3)
             with col_save:
                 if st.button("저장", key="nb_edit_save"):
                     if not (e_name and e_name.strip()):
@@ -162,6 +165,18 @@ def render(tab):
                         if key in st.session_state:
                             del st.session_state[key]
                     st.rerun()
+            with col_delete:
+                if st.button("🗑️ 삭제", key="nb_edit_delete", type="secondary"):
+                    try:
+                        nb_ws.delete_rows(edit_row)
+                        invalidate_sheets_cache()
+                        for key in ("nb_edit_sheet_row", "nb_edit_data"):
+                            if key in st.session_state:
+                                del st.session_state[key]
+                        st.success("삭제되었습니다.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"삭제 실패: {e}")
             st.divider()
 
         if not nb_records:

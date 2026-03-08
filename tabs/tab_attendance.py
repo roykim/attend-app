@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 
 from sheets import get_attendance_data, get_attendance_ws, get_class_data, get_students_data, invalidate_sheets_cache
-from tabs.utils import class_display_label, natural_sort_key
+from tabs.utils import class_display_label, get_restored_class_index, get_restored_grade_index, natural_sort_key, save_grade_class_for_restore
 
 
 def _last_sunday(t: date) -> date:
@@ -40,7 +40,8 @@ def render(tab):
         )
         selected_date = sundays[sel_label]
         grades = sorted(students_data["학년"].dropna().unique().tolist(), key=natural_sort_key)
-        selected_grade = st.selectbox("학년 선택", grades, key="grade_select")
+        default_grade_idx = get_restored_grade_index(grades)
+        selected_grade = st.selectbox("학년 선택", grades, key="grade_select", index=default_grade_idx)
         filtered_class = students_data[students_data["학년"] == selected_grade]
         classes = sorted(filtered_class["반"].dropna().unique().tolist(), key=natural_sort_key)
         try:
@@ -56,13 +57,16 @@ def render(tab):
             class_display_label(c, selected_grade, class_data_for_grade if not class_data_for_grade.empty else None)
             for c in classes
         ]
+        default_class_idx = get_restored_class_index(classes)
         selected_idx = st.selectbox(
             "반 선택",
             range(len(classes)),
             format_func=lambda i: class_options[i],
             key=f"class_select_{selected_grade}",
+            index=default_class_idx,
         )
         selected_class = classes[min(selected_idx, len(classes) - 1)] if classes else None
+        save_grade_class_for_restore(selected_grade, selected_class)
         class_students = filtered_class[filtered_class["반"] == selected_class]
 
         date_str = selected_date.strftime("%Y-%m-%d")
