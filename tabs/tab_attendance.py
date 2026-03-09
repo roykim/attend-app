@@ -6,7 +6,14 @@ from datetime import date, timedelta
 import pandas as pd
 import streamlit as st
 
-from sheets import get_attendance_data, get_attendance_ws, get_class_data, get_students_data, invalidate_sheets_cache
+from sheets import (
+    delete_attendance_rows_for_date_grade_class,
+    get_attendance_data,
+    get_attendance_ws,
+    get_class_data,
+    get_students_data,
+    invalidate_sheets_cache,
+)
 from tabs.utils import class_display_label, get_restored_class_index, get_restored_grade_index, natural_sort_key, save_grade_class_for_restore
 
 
@@ -111,7 +118,9 @@ def render(tab):
             })
 
         if st.button("저장"):
+            ws = get_attendance_ws()
+            delete_attendance_rows_for_date_grade_class(ws, date_str, selected_grade, selected_class)
             df_to_save = pd.DataFrame(attendance_data)
-            get_attendance_ws().append_rows(df_to_save.values.tolist())
+            ws.append_rows(df_to_save.values.tolist())
             invalidate_sheets_cache()
             st.success("출석이 저장되었습니다!")

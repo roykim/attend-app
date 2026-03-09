@@ -180,6 +180,53 @@ def get_attendance_ws():
     return st.session_state.attendance_ws
 
 
+def delete_attendance_rows_for_date_grade_class(ws, date_str: str, grade: str, class_name: str):
+    """해당 (날짜, 학년, 반)에 해당하는 출석 시트의 모든 행을 삭제. 수정 시 기존 데이터를 제거한 뒤 새로 저장하기 위함.
+    배치 API로 한 번에 삭제해 API 호출 횟수를 줄임."""
+    all_values = ws.get_all_values()
+    if not all_values or len(all_values) < 2:
+        return
+    header = all_values[0]
+    try:
+        col_date = header.index("날짜")
+        col_grade = header.index("학년")
+        col_class = header.index("반")
+    except ValueError:
+        return
+    max_col = max(col_date, col_grade, col_class)
+    row_indices_1based = []
+    for i in range(1, len(all_values)):
+        row = all_values[i]
+        if len(row) <= max_col:
+            row = (row + [""] * (max_col + 1))[: max_col + 1]
+        d = str(row[col_date]).strip() if col_date < len(row) else ""
+        g = str(row[col_grade]).strip() if col_grade < len(row) else ""
+        c = str(row[col_class]).strip() if col_class < len(row) else ""
+        if d == str(date_str).strip() and g == str(grade).strip() and c == str(class_name).strip():
+            row_indices_1based.append(i + 1)
+    if not row_indices_1based:
+        return
+    sheet_id = ws._properties.get("sheetId")
+    if sheet_id is None:
+        for row_idx in sorted(row_indices_1based, reverse=True):
+            ws.delete_rows(row_idx)
+        return
+    requests = []
+    for row_idx in sorted(row_indices_1based, reverse=True):
+        requests.append({
+            "deleteDimension": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "dimension": "ROWS",
+                    "startIndex": row_idx - 1,
+                    "endIndex": row_idx,
+                }
+            }
+        })
+    spreadsheet = get_sheet()
+    spreadsheet.batch_update({"requests": requests})
+
+
 def get_students_ws():
     """students 시트 반환 (세션 캐시)."""
     if "students_ws" not in st.session_state:
