@@ -2,6 +2,7 @@
 """탭 3: 개별 출석 확인."""
 
 import html
+import re
 from datetime import date
 
 import pandas as pd
@@ -9,6 +10,18 @@ import streamlit as st
 
 from sheets import get_attendance_data, get_class_data, get_students_data
 from tabs.utils import class_display_label, get_restored_class_index, get_restored_grade_index, natural_sort_key, save_grade_class_for_restore
+
+
+def _tel_href_from_phone(phone: str) -> str:
+    """tel: URI용 번호만 남김. 비어 있거나 숫자가 없으면 빈 문자열."""
+    if not phone or not str(phone).strip():
+        return ""
+    s = str(phone).strip()
+    if s.startswith("+"):
+        rest = re.sub(r"\D", "", s[1:])
+        return f"+{rest}" if rest else ""
+    digits = re.sub(r"\D", "", s)
+    return digits
 
 
 def render(tab):
@@ -129,9 +142,18 @@ def render(tab):
                     name = row["이름"]
                     name_class = " class='name-highlight'" if name in highlight_names else ""
                     name_escaped = html.escape(str(name))
-                    phone_escaped = html.escape(str(row.get("전화번호", "")))
+                    phone_raw = str(row.get("전화번호", "")).strip()
+                    phone_escaped = html.escape(phone_raw)
+                    tel_href = _tel_href_from_phone(phone_raw)
+                    if tel_href:
+                        href_attr = html.escape(f"tel:{tel_href}", quote=True)
+                        phone_td = (
+                            f'<td class="phone-cell"><a class="phone-link" href="{href_attr}">{phone_escaped}</a></td>'
+                        )
+                    else:
+                        phone_td = f"<td class='phone-cell'>{phone_escaped}</td>"
                     cells = "".join(f"<td>{html.escape(str(row.get(w, '-')))}</td>" for w in week_cols)
-                    table_html.append(f"<tr><td{name_class}>{name_escaped}</td><td class='phone-cell'>{phone_escaped}</td>{cells}</tr>")
+                    table_html.append(f"<tr><td{name_class}>{name_escaped}</td>{phone_td}{cells}</tr>")
                 table_html.append("</tbody></table></div>")
 
                 st.markdown(
@@ -149,6 +171,8 @@ def render(tab):
                     .attendance-table tbody tr:nth-child(odd) td:first-child, .attendance-table tbody tr:nth-child(odd) td:nth-child(2) { background: #252525 !important; color: #fff !important; }
                     .attendance-table tbody tr:nth-child(even) td:first-child, .attendance-table tbody tr:nth-child(even) td:nth-child(2) { background: #2d2d2d !important; color: #fff !important; }
                     .attendance-table tbody tr td:first-child.name-highlight { background: linear-gradient(135deg, #be185d 0%, #9d174d 100%) !important; color: #fce7f3 !important; font-weight: 600 !important; }
+                    .attendance-table .phone-link { color: #63b3ed; text-decoration: none; cursor: pointer; }
+                    .attendance-table .phone-link:hover { text-decoration: underline; }
                     </style>
                     """ + "".join(table_html),
                     unsafe_allow_html=True,
